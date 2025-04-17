@@ -1449,8 +1449,15 @@ static fastpath_t pkvm_vcpu_run(struct kvm_vcpu *vcpu, bool force_immediate_exit
 	 * can be enabled earlier.
 	 */
 	if (unlikely(vcpu->kvm->arch.has_protected_state &&
-		     !vcpu->arch.guest_state_protected))
+		     !vcpu->arch.guest_state_protected)) {
 		vcpu->arch.guest_state_protected = true;
+		/*
+		 * Mark the guest_fpu as confidential to avoid the host VMM to do the
+		 * FPU switching for the pVM as this will be done by the pkvm
+		 * hypervisor.
+		 */
+		fpstate_set_confidential(&vcpu->arch.guest_fpu);
+	}
 
 	if (unlikely(vmx->exit_reason.full == 0xdead)) {
 		vmx->fail = 1;

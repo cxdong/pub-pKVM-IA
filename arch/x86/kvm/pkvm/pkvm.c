@@ -587,6 +587,9 @@ static void pkvm_vcpu_load(struct pkvm_vcpu *pkvm_vcpu, int cpu)
 	if (WARN_ON_ONCE(vcpu->cpu != -1 && vcpu->cpu != cpu))
 		return;
 
+	/* Save host pkru register if supported */
+	vcpu->arch.host_pkru = read_pkru();
+
 	kvm_x86_call(vcpu_load)(vcpu, cpu);
 
 	set_pkvm_vcpu_inuse(pkvm_vcpu);

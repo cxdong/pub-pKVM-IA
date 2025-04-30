@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include <asm/fpu/api.h>
+#include <asm/fpu/sched.h>
+#include <asm/fpu/signal.h>
 #include <asm/fpu/types.h>
 #include <asm/cpufeatures.h>
 #include <asm/cpufeature.h>
 #include <asm/msr.h>
+#include <asm/smap.h>
 
 #include "internal.h"
+#include "legacy.h"
 #include "xstate.h"
+#include "context.h"
 
 #ifdef CONFIG_X86_64
 DEFINE_STATIC_KEY_FALSE(__fpu_state_size_dynamic);
@@ -22,6 +27,102 @@ struct fpu_state_config fpu_user_cfg __ro_after_init;
  * depending on the FPU hardware format:
  */
 struct fpstate init_fpstate __ro_after_init;
+
+/*
+ * Track which context is using the FPU on the CPU:
+ */
+DEFINE_PER_CPU(struct fpu *, fpu_fpregs_owner_ctx);
+
+/*
+ * Save the FPU register state in fpu->fpstate->regs. The register state is
+ * preserved.
+ *
+ * Must be called with fpregs_lock() held.
+ *
+ * The legacy FNSAVE instruction clears all FPU state unconditionally, so
+ * register state has to be reloaded. That might be a pointless exercise
+ * when the FPU is going to be used by another task right after that. But
+ * this only affects 20+ years old 32bit systems and avoids conditionals all
+ * over the place.
+ *
+ * FXSAVE and all XSAVE variants preserve the FPU register state.
+ */
+void save_fpregs_to_fpstate(struct fpu *fpu)
+{
+	if (likely(use_xsave())) {
+		os_xsave(fpu->fpstate);
+#ifndef __PKVM_HYP__
+		update_avx_timestamp(fpu);
+#endif
+		return;
+	}
+
+	if (likely(use_fxsr())) {
+		fxsave(&fpu->fpstate->regs.fxsave);
+		return;
+	}
+
+	/*
+	 * Legacy FPU register saving, FNSAVE always clears FPU registers,
+	 * so we have to reload them from the memory state.
+	 */
+	asm volatile("fnsave %[fp]; fwait" : [fp] "=m" (fpu->fpstate->regs.fsave));
+	frstor(&fpu->fpstate->regs.fsave);
+}
+
+void restore_fpregs_from_fpstate(struct fpstate *fpstate, u64 mask)
+{
+	/*
+	 * AMD K7/K8 and later CPUs up to Zen don't save/restore
+	 * FDP/FIP/FOP unless an exception is pending. Clear the x87 state
+	 * here by setting it to fixed values.  "m" is a random variable
+	 * that should be in L1.
+	 */
+	if (unlikely(static_cpu_has_bug(X86_BUG_FXSAVE_LEAK))) {
+		asm volatile(
+			"fnclex\n\t"
+			"emms\n\t"
+			"fildl %[addr]"	/* set F?P to defined value */
+			: : [addr] "m" (*fpstate));
+	}
+
+	if (use_xsave()) {
+		/*
+		 * Dynamically enabled features are enabled in XCR0, but
+		 * usage requires also that the corresponding bits in XFD
+		 * are cleared.  If the bits are set then using a related
+		 * instruction will raise #NM. This allows to do the
+		 * allocation of the larger FPU buffer lazy from #NM or if
+		 * the task has no permission to kill it which would happen
+		 * via #UD if the feature is disabled in XCR0.
+		 *
+		 * XFD state is following the same life time rules as
+		 * XSTATE and to restore state correctly XFD has to be
+		 * updated before XRSTORS otherwise the component would
+		 * stay in or go into init state even if the bits are set
+		 * in fpstate::regs::xsave::xfeatures.
+		 */
+		xfd_update_state(fpstate);
+
+		/*
+		 * Restoring state always needs to modify all features
+		 * which are in @mask even if the current task cannot use
+		 * extended features.
+		 *
+		 * So fpstate->xfeatures cannot be used here, because then
+		 * a feature for which the task has no permission but was
+		 * used by the previous task would not go into init state.
+		 */
+		mask = fpu_kernel_cfg.max_features & mask;
+
+		os_xrstor(fpstate, mask);
+	} else {
+		if (use_fxsr())
+			fxrstor(&fpstate->regs.fxsave);
+		else
+			frstor(&fpstate->regs.fsave);
+	}
+}
 
 static inline void fpstate_init_fxstate(struct fpstate *fpstate)
 {
@@ -85,3 +186,84 @@ int fpu_enable_guest_xfd_features(struct fpu_guest *guest_fpu, u64 xfeatures)
 	return __xfd_enable_feature(xfeatures, guest_fpu);
 }
 EXPORT_SYMBOL_GPL(fpu_enable_guest_xfd_features);
+
+int fpu_swap_kvm_fpstate(struct fpu_guest *guest_fpu, bool enter_guest)
+{
+	struct fpstate *guest_fps = guest_fpu->fpstate;
+	struct fpu *fpu = &current->thread.fpu;
+	struct fpstate *cur_fps = fpu->fpstate;
+
+	fpregs_lock();
+#ifdef __PKVM_HYP__
+#ifdef CONFIG_X86_64
+	if (fpu_state_size_dynamic() && enter_guest) {
+		/*
+		 * Refresh the xfd_state before guest vmenter so that the xfd can be
+		 * restored after guest vmexit.
+		 */
+		rdmsrl(MSR_IA32_XFD, cur_fps->xfd);
+		__this_cpu_write(xfd_state, cur_fps->xfd);
+	}
+#endif
+	/*
+	 * Only save the FPU registers when exit guest for the pVM. When enter
+	 * the guest, the FPU registers hold the value of the host, which is
+	 * saved by the host itself.
+	 */
+	if (guest_fps->is_confidential && !enter_guest)
+#else
+	if (!cur_fps->is_confidential && !test_thread_flag(TIF_NEED_FPU_LOAD))
+#endif
+		save_fpregs_to_fpstate(fpu);
+
+	/* Swap fpstate */
+	if (enter_guest) {
+		fpu->__task_fpstate = cur_fps;
+		fpu->fpstate = guest_fps;
+		guest_fps->in_use = true;
+	} else {
+		guest_fps->in_use = false;
+		fpu->fpstate = fpu->__task_fpstate;
+		fpu->__task_fpstate = NULL;
+	}
+
+	cur_fps = fpu->fpstate;
+
+#ifdef __PKVM_HYP__
+	/*
+	 * For the pVM, when enter guest, restore the FPU with the data from the
+	 * pVM's xsave area. When exit guest, restore the FPU with the initial
+	 * data to wipe the pVM's FPU registers.
+	 *
+	 * For the npVM, no need to restore.
+	 */
+	if (guest_fps->is_confidential) {
+#else
+	if (!cur_fps->is_confidential) {
+#endif
+		/* Includes XFD update */
+		restore_fpregs_from_fpstate(cur_fps, XFEATURE_MASK_FPSTATE);
+	} else {
+		/*
+		 * XSTATE is restored by firmware from encrypted
+		 * memory. Make sure XFD state is correct while
+		 * running with guest fpstate
+		 */
+		xfd_update_state(cur_fps);
+	}
+
+	fpregs_mark_activate();
+	fpregs_unlock();
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(fpu_swap_kvm_fpstate);
+
+void fpregs_mark_activate(void)
+{
+	struct fpu *fpu = &current->thread.fpu;
+
+	fpregs_activate(fpu);
+	fpu->last_cpu = smp_processor_id();
+	clear_thread_flag(TIF_NEED_FPU_LOAD);
+}

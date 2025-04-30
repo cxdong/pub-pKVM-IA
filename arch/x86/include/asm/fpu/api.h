@@ -68,18 +68,22 @@ static inline void kernel_fpu_begin(void)
  */
 static inline void fpregs_lock(void)
 {
+#ifndef __PKVM_HYP__
 	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
 		local_bh_disable();
 	else
 		preempt_disable();
+#endif
 }
 
 static inline void fpregs_unlock(void)
 {
+#ifndef __PKVM_HYP__
 	if (!IS_ENABLED(CONFIG_PREEMPT_RT))
 		local_bh_enable();
 	else
 		preempt_enable();
+#endif
 }
 
 /*

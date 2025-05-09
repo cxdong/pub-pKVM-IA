@@ -703,44 +703,64 @@ static unsigned long pkvm_vcpu_run(struct pkvm_vcpu *pkvm_vcpu, bool force_immed
 	return reqs;
 }
 
-static unsigned long pkvm_vcpu_after_set_cpuid(struct pkvm_vcpu *pkvm_vcpu, unsigned long new_pa)
+static unsigned long pkvm_vcpu_after_set_cpuid(struct pkvm_vcpu *pkvm_vcpu,
+					       unsigned long new_entries_gpa,
+					       unsigned long e2size)
 {
+	struct pkvm_memcache mc = {
+		.head = INVALID_PAGE,
+		.nr_pages = 0,
+	};
 	struct kvm_cpuid_entry2 *new, *old;
-	unsigned long ret = new_pa;
+	int new_nent, old_nent;
 	struct kvm_vcpu *vcpu;
-	int nent;
-	u64 size;
+	unsigned long e2pa;
 
-	if (WARN_ON_ONCE(!pkvm_vcpu))
-		return ret;
+	if (!VALID_PAGE(new_entries_gpa) ||
+	    !PAGE_ALIGNED(new_entries_gpa) ||
+	    !PAGE_ALIGNED(e2size) ||
+	    !e2size)
+		return INVALID_PAGE;
 
-	nent = pkvm_vcpu->shared_vcpu->arch.cpuid_nent;
-	size = PAGE_ALIGN(sizeof(struct kvm_cpuid_entry2) * nent);
-	if (__pkvm_host_donate_hyp(new_pa, size))
-		return ret;
+	e2pa = host_gpa2hpa(new_entries_gpa);
+	if (WARN_ON_ONCE(!pkvm_vcpu) ||
+	    __pkvm_host_donate_hyp(e2pa, e2size))
+		goto out;
 
 	vcpu = to_kvm_vcpu(pkvm_vcpu);
+	old_nent = vcpu->arch.cpuid_nent;
 	old = vcpu->arch.cpuid_entries;
-	new = __pkvm_va(new_pa);
+	new_nent = e2size / sizeof(struct kvm_cpuid_entry2);
+	new = __pkvm_va(e2pa);
 
-	if (kvm_set_cpuid(vcpu, new, nent) || vcpu->arch.cpuid_entries != new) {
-		/* New physical page is not consumed */
-		__pkvm_hyp_donate_host(new_pa, size);
-	} else if (vcpu->arch.cpuid_entries == new) {
-		/* New physical page is consumed */
+	if (!kvm_set_cpuid(vcpu, new, new_nent) && (vcpu->arch.cpuid_entries == new)) {
+		/*
+		 * New physical page is consumed. Teardown the old cpuid
+		 * entry memory pages if there is.
+		 */
 		if (old) {
-			memset(old, 0, size);
-			/* Let the host VMM to free the old physical pages */
-			ret = __pkvm_pa(old);
-			/* Before that, undonate the old physical pages */
-			__pkvm_hyp_donate_host(ret, size);
+			e2pa = __pkvm_pa(old);
+			e2size = sizeof(struct kvm_cpuid_entry2) * old_nent;
 		} else {
-			/* No physical page for the host VMM to free */
-			ret = INVALID_PAGE;
+			e2pa = INVALID_PAGE;
+			e2size = 0;
 		}
 	}
+out:
+	if (VALID_PAGE(e2pa))
+		teardown_donated_memory(&mc, (void *)__pkvm_va(e2pa), e2size);
 
-	return ret;
+	if (VALID_PAGE(mc.head)) {
+		/*
+		 * Store the nr_page in the first page of the teardowned memory
+		 * at the offset skipping sizeof(phys_addr_t) where stores the
+		 * next page physical address.
+		 */
+		unsigned long *nr_pages = __pkvm_va(mc.head) + sizeof(phys_addr_t);
+
+		*nr_pages = mc.nr_pages;
+	}
+	return mc.head;
 }
 
 static void pkvm_reset_vcpu(struct pkvm_vcpu *pkvm_vcpu, bool init_event)
@@ -1324,7 +1344,7 @@ static unsigned long pkvm_vcpu_handle_kvm_call(unsigned long fn,
 		ret = pkvm_vcpu_run(pkvm_vcpu, (bool)p2);
 		break;
 	case __pkvm__vcpu_after_set_cpuid:
-		ret = pkvm_vcpu_after_set_cpuid(pkvm_vcpu, p2);
+		ret = pkvm_vcpu_after_set_cpuid(pkvm_vcpu, p2, p3);
 		break;
 	case __pkvm__vcpu_reset:
 		pkvm_reset_vcpu(pkvm_vcpu, (bool)p2);

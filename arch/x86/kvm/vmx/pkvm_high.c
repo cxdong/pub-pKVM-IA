@@ -1760,7 +1760,7 @@ static void pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpuid_entry2 *e2 = vcpu->arch.cpuid_entries;
 	int nent = vcpu->arch.cpuid_nent;
-	unsigned long unused_pa;
+	unsigned long old_entries_pa;
 	void *entries;
 	size_t size;
 
@@ -1776,10 +1776,16 @@ static void pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 
 	memcpy(entries, (void *)e2, size);
 
-	unused_pa = kvm_call_pkvm(vcpu_after_set_cpuid, vcpu, __pa(entries));
-	if (VALID_PAGE(unused_pa)) {
-		entries = __va(unused_pa);
-		free_pages_exact(entries, size);
+	old_entries_pa = kvm_call_pkvm(vcpu_after_set_cpuid, vcpu,
+				       __pa(entries), PAGE_ALIGN(size));
+	if (VALID_PAGE(old_entries_pa)) {
+		unsigned long *nr_pages = __va(old_entries_pa) + sizeof(phys_addr_t);
+		struct pkvm_memcache mc = {
+			.head = old_entries_pa,
+			.nr_pages = *nr_pages,
+		};
+
+		free_pkvm_memcache(&mc);
 	}
 }
 

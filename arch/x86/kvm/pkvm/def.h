@@ -28,6 +28,7 @@
 #undef CONFIG_X86_SGX_KVM
 #undef CONFIG_PREEMPT_COUNT
 #undef CONFIG_USE_X86_SEG_SUPPORT
+#undef CONFIG_X86_DEBUG_FPU
 #define __NO_FORTIFY
 
 #include <linux/types.h>

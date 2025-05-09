@@ -900,13 +900,29 @@ static int pkvm_vcpu_create(struct kvm_vcpu *vcpu)
 	}
 
 	pkvm_vcpu_sz = PAGE_ALIGN(PKVM_SHADOW_VCPU_STATE_SIZE);
+	if (pkvm_is_protected_vcpu(vcpu))
+		/*
+		 * The pVM FPU registers will be switched by the pkvm
+		 * hypervisor. Allocate the fpstate regs memory according
+		 * to the real guest_fpu.fpstate size.
+		 */
+		pkvm_vcpu_sz += PAGE_ALIGN(vcpu->arch.guest_fpu.fpstate->size +
+					   ALIGN(offsetof(struct fpstate, regs), 64));
+	else
+		/*
+		 * The npVM FPU registers will be switched by the host. No need
+		 * to count the real guest_fpu.fpstate size but just strcut
+		 * fpstate size except for the regs.
+		 */
+		pkvm_vcpu_sz += PAGE_ALIGN(ALIGN(offsetof(struct fpstate, regs), 64));
+
 	pkvm_vcpu = alloc_pages_exact(pkvm_vcpu_sz, GFP_KERNEL_ACCOUNT);
 	if (!pkvm_vcpu)
 		goto free_ve;
 
 	/* TODO: share struct vcpu_vmx with pkvm */
 
-	ret = kvm_call_pkvm(vcpu_create, vcpu, __pa(pkvm_vcpu));
+	ret = kvm_call_pkvm(vcpu_create, vcpu, __pa(pkvm_vcpu), pkvm_vcpu_sz);
 	if (ret < 0)
 		goto free_pages;
 

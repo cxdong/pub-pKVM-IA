@@ -6,6 +6,7 @@
 #include <linux/memblock.h>
 #include <asm/kvm_pkvm.h>
 #include <pkvm/pkvm.h>
+#include <pkvm/fpu/fpu.h>
 #include <pkvm.h>
 #include "trace.h"
 #include "vmexit.h"

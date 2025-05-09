@@ -4,6 +4,7 @@
 #include "x86.h"
 #include "pkvm.h"
 #include "cpuid.h"
+#include "fpu/fpu.h"
 #include <asm/pkvm_spinlock.h>
 //FIXME: clean up the header files
 #include <vmx/pkvm/hyp/mem_protect.h>
@@ -187,7 +188,8 @@ undonate:
 	return ret;
 }
 
-static int attach_pkvm_vcpu_to_vm(struct pkvm_vcpu *pkvm_vcpu, struct pkvm_vm *pkvm_vm)
+static int attach_pkvm_vcpu_to_vm(struct pkvm_vcpu *pkvm_vcpu, struct fpstate *fps,
+				  struct pkvm_vm *pkvm_vm)
 {
 	struct kvm_vcpu *vcpu;
 	struct kvm *kvm;
@@ -218,6 +220,7 @@ static int attach_pkvm_vcpu_to_vm(struct pkvm_vcpu *pkvm_vcpu, struct pkvm_vm *p
 	 */
 	vcpu->arch.apic = pkvm_vcpu->shared_vcpu->arch.apic;
 	vcpu->arch.apic_base = pkvm_vcpu->shared_vcpu->arch.apic_base;
+	vcpu->arch.guest_fpu.fpstate = fps;
 
 	ret = kvm_arch_vcpu_create(vcpu);
 	if (ret)
@@ -269,27 +272,33 @@ void put_pkvm_vm(struct pkvm_vm *pkvm_vm)
 	WARN_ON(atomic_dec_if_positive(&pkvm_vm_ref->refcount) <= 0);
 }
 
-static int pkvm_vcpu_create(struct kvm_vcpu *shared_vcpu, unsigned long gpa)
+static int pkvm_vcpu_create(struct kvm_vcpu *shared_vcpu, unsigned long gpa,
+			    unsigned long size)
 {
 	struct pkvm_vcpu *pkvm_vcpu;
-	unsigned long pkvm_vcpu_pa;
 	struct pkvm_vm *pkvm_vm;
 	struct kvm *shared_kvm;
-	size_t pa_size;
+	struct fpstate *fps;
+	unsigned long pa;
+	size_t fpsize;
+	void *va;
 	int ret;
 
-	pkvm_vcpu_pa = host_gpa2hpa(gpa);
-	if (!PAGE_ALIGNED(pkvm_vcpu_pa))
+	if (!VALID_PAGE(gpa) ||
+	    !PAGE_ALIGNED(gpa) ||
+	    !PAGE_ALIGNED(size) ||
+	    (size <= PAGE_ALIGN(pkvm_vcpu_sz)))
+		return -ENOMEM;
+
+	pa = host_gpa2hpa(gpa);
+	if (__pkvm_host_donate_hyp(pa, size))
 		return -EINVAL;
 
-	pa_size = PAGE_ALIGN(pkvm_vcpu_sz);
-	if (__pkvm_host_donate_hyp(pkvm_vcpu_pa, pa_size))
-		return -EINVAL;
+	va = __pkvm_va(pa);
+	memset(va, 0, size);
 
-	pkvm_vcpu = pkvm_phys_to_virt(pkvm_vcpu_pa);
-	memset(pkvm_vcpu, 0, pa_size);
-
-	pkvm_vcpu->size = pa_size;
+	pkvm_vcpu = va;
+	pkvm_vcpu->size = PAGE_ALIGN(pkvm_vcpu_sz);
 	/*
 	 * TODO: Assume host is already share the kvm_vcpu structure
 	 * (represented by shared_vcpu) with pkvm. So just pin
@@ -304,7 +313,42 @@ static int pkvm_vcpu_create(struct kvm_vcpu *shared_vcpu, unsigned long gpa)
 		goto undonate;
 	}
 
-	ret = attach_pkvm_vcpu_to_vm(pkvm_vcpu, pkvm_vm);
+	fpsize = size - pkvm_vcpu->size;
+	if (pkvm_is_protected_vm(to_kvm(pkvm_vm))) {
+		/*
+		 * The pkvm hypervisor switches the FPU registers for the pVM
+		 * thus the fpstate size should satisfy the fpu kernel config
+		 * default size.
+		 */
+		if (fpsize < (fpu_kernel_cfg.default_size +
+			      ALIGN(offsetof(struct fpstate, regs), 64))) {
+			ret = -EINVAL;
+			goto put_pkvm_vm;
+		}
+	} else {
+		/*
+		 * The host switches the FPU registers for the npVM thus the
+		 * fpstate in the pkvm hypervisor is not used except for the XFD
+		 * MSR emulation. So the fpstate size should just satisfy the
+		 * struct fpstate size except for the regs.
+		 */
+		if (fpsize < ALIGN(offsetof(struct fpstate, regs), 64)) {
+			ret = -EINVAL;
+			goto put_pkvm_vm;
+		}
+	}
+
+	fps = (struct fpstate *)(va + pkvm_vcpu->size);
+	memset(fps, 0, fpsize);
+	/*
+	 * Although the fpstate size represents the size of the register memory,
+	 * use this field to save the size of the fpstate memory to simplify the
+	 * undonating, which is the only usage of the fpstate size field in the
+	 * pkvm hypervisor.
+	 */
+	fps->size = fpsize;
+
+	ret = attach_pkvm_vcpu_to_vm(pkvm_vcpu, fps, pkvm_vm);
 	if (ret)
 		goto put_pkvm_vm;
 
@@ -315,7 +359,7 @@ static int pkvm_vcpu_create(struct kvm_vcpu *shared_vcpu, unsigned long gpa)
 put_pkvm_vm:
 	put_pkvm_vm(pkvm_vm);
 undonate:
-	__pkvm_hyp_donate_host(pkvm_vcpu_pa, pa_size);
+	__pkvm_hyp_donate_host(pa, size);
 	return ret;
 }
 
@@ -339,6 +383,9 @@ static void pkvm_vm_destroy(int handle)
 					(void *)vcpu->arch.cpuid_entries,
 					sizeof(struct kvm_cpuid_entry2) *
 					vcpu->arch.cpuid_nent);
+		teardown_donated_memory(&shared_pkvm->teardown_mc,
+					(void *)vcpu->arch.guest_fpu.fpstate,
+					vcpu->arch.guest_fpu.fpstate->size);
 		teardown_donated_memory(&shared_pkvm->teardown_mc,
 					(void *)pkvm_vcpu, pkvm_vcpu->size);
 		/* TODO: unpin shared kvm_vcpu */
@@ -1526,7 +1573,7 @@ unsigned long handle_kvm_call(unsigned long fn, unsigned long p1,
 		ret = 0;
 		break;
 	case __pkvm__vcpu_create:
-		ret = pkvm_vcpu_create((struct kvm_vcpu *)kern_pkvm_va((void *)p1), p2);
+		ret = pkvm_vcpu_create((struct kvm_vcpu *)kern_pkvm_va((void *)p1), p2, p3);
 		break;
 	default:
 		ret = pkvm_vcpu_handle_kvm_call(fn, (struct kvm_vcpu *)kern_pkvm_va((void *)p1),

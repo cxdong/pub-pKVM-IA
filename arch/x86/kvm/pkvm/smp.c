@@ -9,6 +9,7 @@
 unsigned long __per_cpu_offset[NR_CPUS];
 DEFINE_PER_CPU_READ_MOSTLY(unsigned long, this_cpu_off);
 DEFINE_PER_CPU_ALIGNED(struct pcpu_hot, pcpu_hot);
+DEFINE_PER_CPU(struct task_struct, cur_task);
 struct cpumask __cpu_possible_mask __ro_after_init;
 unsigned int nr_cpu_ids;
 
@@ -22,6 +23,7 @@ unsigned int pkvm_per_cpu_nr_pages(void)
 
 int setup_pkvm_per_cpu(int cpu, unsigned long base)
 {
+	struct task_struct *task;
 	unsigned long elf_base;
 
 	if (cpu >= ARRAY_SIZE(__per_cpu_offset))
@@ -31,6 +33,10 @@ int setup_pkvm_per_cpu(int cpu, unsigned long base)
 	__per_cpu_offset[cpu] = (unsigned long)__pkvm_va(base) - elf_base;
 	per_cpu(this_cpu_off, cpu) = __per_cpu_offset[cpu];
 	per_cpu(pcpu_hot.cpu_number, cpu) = cpu;
+
+	task = per_cpu_ptr(&cur_task, cpu);
+	task->group_leader = task;
+	per_cpu(pcpu_hot.current_task, cpu) = task;
 
 	return 0;
 }

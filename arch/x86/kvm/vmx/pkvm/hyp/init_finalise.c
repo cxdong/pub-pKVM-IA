@@ -416,6 +416,8 @@ switch_pgt:
 
 	ept_sync_global();
 
+	pkvm_init_percpu_fpu();
+
 	ret = pkvm_setup_lapic(pcpu, vcpu->cpu);
 out:
 	return ret;

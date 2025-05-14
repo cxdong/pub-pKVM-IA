@@ -146,17 +146,7 @@ static int kvm_check_cpuid(struct kvm_vcpu *vcpu,
 	if (!xfeatures)
 		return 0;
 
-#ifdef __PKVM_HYP__
-	/*
-	 * TODO: The guest fpu xfd feature is enabled by the host when the host
-	 * KVM run its kvm_check_cpuid function before calling the
-	 * vcpu_after_set_cpuid PV interface. Revisit when implements the fpu
-	 * isolation.
-	 */
-	return 0;
-#else
 	return fpu_enable_guest_xfd_features(&vcpu->arch.guest_fpu, xfeatures);
-#endif
 }
 
 /* Check whether the supplied CPUID data is equal to what is already set for the vCPU. */

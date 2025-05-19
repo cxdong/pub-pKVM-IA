@@ -1348,6 +1348,7 @@ struct kvm_protected_vm {
 
 	gpa_t pvmfw_load_addr;
 	bool finalized;
+	struct mutex finalized_lock;
 };
 
 struct kvm_arch {

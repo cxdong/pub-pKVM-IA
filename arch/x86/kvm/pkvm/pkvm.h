@@ -159,5 +159,6 @@ void put_pkvm_vcpu(struct pkvm_vcpu *pkvm_vcpu);
 unsigned long handle_kvm_call(unsigned long fn, unsigned long p1,
 			      unsigned long p2, unsigned long p3);
 void pkvm_x86_ops_init(struct pkvm_x86_ops *ops);
+void warn_thunk_thunk(void);
 
 #endif /* __PKVM_X86_PKVM_H */

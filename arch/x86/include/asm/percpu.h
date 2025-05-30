@@ -10,7 +10,7 @@
 # define __percpu_rel
 #endif
 
-#ifdef __PKVM_HYP__
+#if defined(__PKVM_HYP__) && IS_ENABLED(CONFIG_PKVM_INTEL_DEBUG)
 #undef __percpu_seg
 # define __percpu_seg		fs
 #endif
@@ -52,7 +52,7 @@
 # define __percpu_seg_override	__seg_fs
 #endif
 
-#ifdef __PKVM_HYP__
+#if defined(__PKVM_HYP__) && IS_ENABLED(CONFIG_PKVM_INTEL_DEBUG)
 #undef __percpu_seg_override
 # define __percpu_seg_override	__seg_fs
 #endif

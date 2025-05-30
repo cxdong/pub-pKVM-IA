@@ -66,16 +66,18 @@ void pkvm_init_host_state_area(struct pkvm_pcpu *pcpu, int cpu)
 	vmcs_write16(HOST_TR_SELECTOR, GDT_ENTRY_TSS*8);
 	vmcs_write16(HOST_FS_SELECTOR, 0);
 	vmcs_write16(HOST_GS_SELECTOR, 0);
-	/* FIXME: see the comments for HOST_FS_BASE in the above */
-	vmcs_writel(HOST_FS_BASE, per_cpu_offset(cpu));
-	vmcs_writel(HOST_GS_BASE, 0);
+	/*
+	 * Use GS to be consistent with kernel in non-debug mode.
+	 * The direct reason is that kernel will patch function calls
+	 * with per-cpu variables using GS when having CALL_DEPTH_TRACKING.
+	 * pkvm hypervisor code is patched as well.
+	 */
+	vmcs_writel(HOST_FS_BASE, 0);
+	vmcs_writel(HOST_GS_BASE, per_cpu_offset(cpu));
 
 	vmcs_writel(HOST_TR_BASE, (unsigned long)&pcpu->tss);
 	vmcs_writel(HOST_GDTR_BASE, (unsigned long)(&pcpu->gdt_page));
 	vmcs_writel(HOST_IDTR_BASE, (unsigned long)(&pcpu->idt_page));
-
-	vmcs_write16(HOST_GS_SELECTOR, __KERNEL_DS);
-	vmcs_writel(HOST_GS_BASE, cpu);
 #endif
 
 	/* MSR area */

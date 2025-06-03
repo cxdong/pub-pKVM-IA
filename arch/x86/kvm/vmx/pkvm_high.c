@@ -1764,6 +1764,8 @@ static void pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 	void *entries;
 	size_t size;
 
+	kvm_governed_feature_check_and_set(vcpu, X86_FEATURE_LAM);
+
 	if (vcpu->arch.guest_state_protected || !e2 || !nent)
 		return;
 

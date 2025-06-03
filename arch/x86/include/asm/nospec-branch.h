@@ -399,6 +399,28 @@ extern void retbleed_return_thunk(void);
 extern void srso_return_thunk(void);
 extern void srso_alias_return_thunk(void);
 
+#ifdef CONFIG_PKVM_INTEL
+#ifdef CONFIG_MITIGATION_UNRET_ENTRY
+extern void retbleed_return_thunk__pkvm(void);
+#else
+static inline void retbleed_return_thunk__pkvm(void) {}
+#endif
+
+extern void srso_alias_untrain_ret__pkvm(void);
+
+#ifdef CONFIG_MITIGATION_SRSO
+extern void srso_return_thunk__pkvm(void);
+extern void srso_alias_return_thunk__pkvm(void);
+#else
+static inline void srso_return_thunk__pkvm(void) {}
+static inline void srso_alias_return_thunk__pkvm(void) {}
+#endif
+
+extern void retbleed_return_thunk__pkvm(void);
+extern void srso_return_thunk__pkvm(void);
+extern void srso_alias_return_thunk__pkvm(void);
+#endif /* CONFIG_PKVM_INTEL */
+
 extern void entry_untrain_ret(void);
 extern void entry_ibpb(void);
 
@@ -412,6 +434,7 @@ extern void __warn_thunk(void);
 
 #ifdef CONFIG_MITIGATION_CALL_DEPTH_TRACKING
 extern void call_depth_return_thunk(void);
+extern void call_depth_return_thunk__pkvm(void);
 
 #define CALL_DEPTH_ACCOUNT					\
 	ALTERNATIVE("",						\
@@ -427,6 +450,7 @@ DECLARE_PER_CPU(u64, __x86_ctxsw_count);
 #else /* !CONFIG_MITIGATION_CALL_DEPTH_TRACKING */
 
 static inline void call_depth_return_thunk(void) {}
+static inline void call_depth_return_thunk__pkvm(void) {}
 #define CALL_DEPTH_ACCOUNT ""
 
 #endif /* CONFIG_MITIGATION_CALL_DEPTH_TRACKING */

@@ -45,6 +45,10 @@ $(obj)/vmx/vmenter.o: $(obj)/kvm-asm-offsets.h
 $(obj)/kvm-asm-offsets.h: $(obj)/kvm-asm-offsets.s FORCE
 	$(call filechk,offsets,__KVM_ASM_OFFSETS_H__)
 
+pkvm-intel-y		+= vmx/pkvm_init.o
+
+obj-$(CONFIG_PKVM_INTEL) += pkvm-intel.o
+
 targets += kvm-asm-offsets.s
 clean-files += kvm-asm-offsets.h
 

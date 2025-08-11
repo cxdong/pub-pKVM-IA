@@ -3,14 +3,27 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <asm/kvm_pkvm.h>
 #include "vmx.h"
 
 static DEFINE_PER_CPU(struct pkvm_pcpu *, pkvm_pcpu);
 
 static u64 __init vmx_pkvm_total_reserve_pages(void)
 {
-	return pkvm_data_pages();
+	return pkvm_vmx_data_pages();
+}
+
+static __init int pkvm_setup_host_vm(struct pkvm_hyp *pkvm)
+{
+	struct kvm_vmx *kvmx = pkvm_early_alloc_contig(PKVM_HOST_KVM_VMX_PAGES);
+
+	if (!kvmx) {
+		pr_err("no kvm_vmx memory\n");
+		return -ENOMEM;
+	}
+
+	pkvm->host_kvm = &kvmx->kvm;
+
+	return 0;
 }
 
 static __init int pkvm_setup_pcpu(int cpu)
@@ -49,7 +62,7 @@ int __init vmx_pkvm_init(void)
 		goto out;
 	}
 
-	nr_pages = pkvm_data_pages();
+	nr_pages = pkvm_vmx_data_pages();
 	pkvm_early_alloc_init(__va(pkvm_mem_base), nr_pages << PAGE_SHIFT);
 
 	pkvm = pkvm_early_alloc_contig(PKVM_HYP_PAGES);
@@ -58,6 +71,10 @@ int __init vmx_pkvm_init(void)
 		ret = -ENOMEM;
 		goto out;
 	}
+
+	ret = pkvm_setup_host_vm(pkvm);
+	if (ret)
+		goto out;
 
 	pkvm->num_cpus = 0;
 

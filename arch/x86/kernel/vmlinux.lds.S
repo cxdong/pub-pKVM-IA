@@ -141,11 +141,22 @@ PHDRS {
 	. = ALIGN(PAGE_SIZE);						\
 	__pkvm_data_end = .;
 
+#define PKVM_RODATA							\
+	PKVM_SECTION_NAME(.rodata) : 					\
+		AT(ADDR(PKVM_SECTION_NAME(.rodata)) - LOAD_OFFSET) {	\
+	. = ALIGN(PAGE_SIZE);						\
+	__pkvm_rodata_start = .;					\
+	*(PKVM_SECTION_NAME(.rodata))					\
+	*(PKVM_SECTION_NAME(.data..ro_after_init))			\
+	. = ALIGN(PAGE_SIZE);						\
+	__pkvm_rodata_end = .;						\
+	}
 #else
 
 #define PKVM_TEXT
 #define PKVM_BSS
 #define PKVM_DATA
+#define PKVM_RODATA
 
 #endif
 
@@ -238,6 +249,16 @@ SECTIONS
 		/* End of data section */
 		_edata = .;
 	} :data
+
+	/*
+	 * The mark_rodata_ro() function expects to unmap the gaps in the
+	 * text/rodata and rodata/data sections. Placing the pKVM rodata between
+	 * text, rodata and data will lead the mark_rodata_ro() to unmap and
+	 * free the pKVM rodata memory pages, causing the memory accessing
+	 * violation as these pages are protected by the pKVM. Positioning the
+	 * pKVM rodata after the data section.
+	 */
+	PKVM_RODATA
 
 	BUG_TABLE
 

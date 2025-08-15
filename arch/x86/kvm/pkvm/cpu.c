@@ -6,6 +6,7 @@
 #include <asm/kvm_pkvm.h>
 #include <asm/percpu.h>
 #include <asm/page.h>
+#include "memory.h"
 #include "pkvm.h"
 #include "cpu.h"
 
@@ -38,7 +39,7 @@ int pkvm_setup_per_cpu(int cpu, unsigned long base)
 	if (!vcpu)
 		return -EINVAL;
 
-	__per_cpu_offset[cpu] = (unsigned long)__va(base) -
+	__per_cpu_offset[cpu] = (unsigned long)__pkvm_va(base) -
 				(unsigned long)__per_cpu_start;
 	per_cpu(this_cpu_off, cpu) = __per_cpu_offset[cpu];
 	per_cpu(cpu_number, cpu) = cpu;

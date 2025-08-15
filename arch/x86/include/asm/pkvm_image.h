@@ -26,17 +26,10 @@
 
 #ifdef LINKER_SCRIPT
 
-#define __PKVM_CONCAT(a, b)	a ## b
-#define PKVM_CONCAT(a, b)	__PKVM_CONCAT(a, b)
-
 #define PKVM_SECTION_NAME(NAME)	.pkvm##NAME
 
-#define PKVM_SECTION_SYMBOL_NAME(NAME) \
-	PKVM_CONCAT(__pkvm_section_, PKVM_SECTION_NAME(NAME))
-
 #define BEGIN_PKVM_SECTION(NAME)			\
-	PKVM_SECTION_NAME(NAME) : {			\
-		PKVM_SECTION_SYMBOL_NAME(NAME) = .;
+	PKVM_SECTION_NAME(NAME) : {
 
 #define END_PKVM_SECTION				\
 	}

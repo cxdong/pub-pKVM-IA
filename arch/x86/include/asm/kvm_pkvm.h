@@ -33,6 +33,32 @@ struct pkvm_hyp {
 #define PKVM_HYP_PAGES		(PAGE_ALIGN(sizeof(struct pkvm_hyp)) >> PAGE_SHIFT)
 #define PKVM_PCPU_PAGES		(PAGE_ALIGN(sizeof(struct pkvm_pcpu)) >> PAGE_SHIFT)
 
+#define __kvm_call_pkvm_0(f)		kvm_hypercall4(f, 0, 0, 0, 0)
+#define __kvm_call_pkvm_1(f, p1)							\
+	({										\
+		kvm_hypercall4(f, (unsigned long)(p1), 0, 0, 0);			\
+	})
+#define __kvm_call_pkvm_2(f, p1, p2)							\
+	({										\
+		kvm_hypercall4(f, (unsigned long)(p1), (unsigned long)(p2), 0, 0);	\
+	})
+#define __kvm_call_pkvm_3(f, p1, p2, p3)						\
+	({										\
+		kvm_hypercall4(f, (unsigned long)(p1), (unsigned long)(p2),		\
+			       (unsigned long)(p3), 0);					\
+	})
+#define __kvm_call_pkvm_4(f, p1, p2, p3, p4)						\
+	({										\
+		kvm_hypercall4(f, (unsigned long)(p1), (unsigned long)(p2),		\
+			       (unsigned long)(p3), (unsigned long)(p4));		\
+	})
+#define CALL_PKVM(f)		CONCATENATE(__pkvm__, f)
+#define kvm_call_pkvm(f, ...)								\
+	({										\
+		CONCATENATE(__kvm_call_pkvm_,						\
+			    COUNT_ARGS(__VA_ARGS__))(CALL_PKVM(f), ##__VA_ARGS__);	\
+	})
+
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT
 extern unsigned long pkvm_sym(page_offset_base);
 #endif

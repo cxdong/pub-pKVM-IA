@@ -47,6 +47,13 @@ $(obj)/kvm-asm-offsets.h: $(obj)/kvm-asm-offsets.s FORCE
 
 pkvm-intel-$(CONFIG_PKVM_INTEL)	+= vmx/pkvm_init.o
 
+$(obj)/vmx/pkvm_init.o: $(obj)/pkvm/pkvm_constants.h
+$(obj)/pkvm/pkvm-constants.s: $(src)/pkvm/pkvm_constants.c FORCE
+	$(call if_changed_dep,cc_s_c)
+$(obj)/pkvm/pkvm_constants.h: $(obj)/pkvm/pkvm-constants.s FORCE
+	$(call filechk,offsets,__PKVM_CONSTANTS_H__)
+CFLAGS_vmx/pkvm_init.o    := -iquote $(obj)/pkvm
+
 obj-$(CONFIG_PKVM_X86) += pkvm-intel.o pkvm.o pkvm/
 
 targets += kvm-asm-offsets.s

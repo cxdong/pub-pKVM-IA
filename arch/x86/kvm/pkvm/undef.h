@@ -9,9 +9,11 @@
  * introducing additional symbols, some kernel configuration options are
  * disabled. (This list needs to be extended when new variants are added.)
  */
+#ifndef CONFIG_PKVM_X86_DEBUG
 #undef CONFIG_PRINTK
 #undef CONFIG_BUG
 #undef CONFIG_GENERIC_BUG
+#endif
 #undef CONFIG_CALL_THUNKS_DEBUG
 
 #endif /* __PKVM_X86_UNDEF_H */

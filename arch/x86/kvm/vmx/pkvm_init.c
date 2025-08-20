@@ -285,14 +285,17 @@ static __init int pkvm_setup_host_vcpu(struct pkvm_hyp *pkvm, int cpu)
 
 static __init int pkvm_setup_per_cpu(struct pkvm_hyp *pkvm, int cpu)
 {
+#ifndef CONFIG_PKVM_X86_DEBUG
 	unsigned int nr_pages;
 	void *per_cpu_base;
+#endif
 
 	if (cpu >= CONFIG_NR_CPUS) {
 		pr_err("setup_percpu: invalid CPU number %d\n", cpu);
 		return -EINVAL;
 	}
 
+#ifndef CONFIG_PKVM_X86_DEBUG
 	nr_pages = pkvm_sym(pkvm_per_cpu_nr_pages)();
 	if (!nr_pages)
 		return 0;
@@ -302,6 +305,17 @@ static __init int pkvm_setup_per_cpu(struct pkvm_hyp *pkvm, int cpu)
 		pr_err("no percpu page for CPU%d\n", cpu);
 		return -ENOMEM;
 	}
+#else
+	/*
+	 * Overwrite the pkvm's percpu setup symbols with the host percpu value
+	 * as the same percpu base will be used by the pKVM and the host in the
+	 * debug build.
+	 */
+	if (pkvm_sym(pkvm_setup_per_cpu)(cpu, __pa(__per_cpu_offset[cpu]))) {
+		pr_err("no percpu page for CPU%d\n", cpu);
+		return -ENOMEM;
+	}
+#endif
 
 	return 0;
 }
@@ -417,6 +431,10 @@ static __init void init_host_state_area(struct vcpu_vmx *vmx, struct pkvm_hyp *p
 	int cpu = smp_processor_id();
 	unsigned long host_rsp, msrl;
 	struct pkvm_pcpu *pcpu;
+#ifdef CONFIG_PKVM_X86_DEBUG
+	struct desc_ptr dt;
+	u16 selector;
+#endif
 
 	vmcs_writel(HOST_CR0, read_cr0() & ~X86_CR0_TS);
 	/* Use host cr3 until the pKVM hypervisor created its own MMU */
@@ -433,6 +451,46 @@ static __init void init_host_state_area(struct vcpu_vmx *vmx, struct pkvm_hyp *p
 	 */
 	vmcs_writel(HOST_CR4, __read_cr4() & ~X86_CR4_FRED);
 
+#ifdef CONFIG_PKVM_X86_DEBUG
+	savesegment(cs, selector);
+	vmcs_write16(HOST_CS_SELECTOR, selector);
+	savesegment(ss, selector);
+	vmcs_write16(HOST_SS_SELECTOR, selector);
+	savesegment(ds, selector);
+	vmcs_write16(HOST_DS_SELECTOR, selector);
+	savesegment(es, selector);
+	vmcs_write16(HOST_ES_SELECTOR, selector);
+	savesegment(fs, selector);
+	vmcs_write16(HOST_FS_SELECTOR, selector);
+	rdmsrl(MSR_FS_BASE, msrl);
+	vmcs_writel(HOST_FS_BASE, msrl);
+	savesegment(gs, selector);
+	vmcs_write16(HOST_GS_SELECTOR, selector);
+	rdmsrl(MSR_GS_BASE, msrl);
+	vmcs_writel(HOST_GS_BASE, msrl);
+
+	vmcs_write16(HOST_TR_SELECTOR, GDT_ENTRY_TSS*8);
+	vmcs_writel(HOST_TR_BASE, (unsigned long)&get_cpu_entry_area(cpu)->tss.x86_tss);
+
+	native_store_gdt(&dt);
+	vmcs_writel(HOST_GDTR_BASE, dt.address);
+
+	/*
+	 * Use pKVM's exception handlers, to minimize differences from
+	 * non-debug mode.
+	 */
+	pcpu = pkvm->pcpus[cpu];
+	vmcs_writel(HOST_IDTR_BASE, (unsigned long)(&pcpu->idt_page));
+
+	rdmsrl(MSR_IA32_SYSENTER_CS, msrl);
+	vmcs_write32(HOST_IA32_SYSENTER_CS, (u32)msrl);
+
+	rdmsrl(MSR_IA32_SYSENTER_ESP, msrl);
+	vmcs_writel(HOST_IA32_SYSENTER_ESP, msrl);
+
+	rdmsrl(MSR_IA32_SYSENTER_EIP, msrl);
+	vmcs_writel(HOST_IA32_SYSENTER_EIP, msrl);
+#else
 	vmcs_write16(HOST_CS_SELECTOR, __KERNEL_CS);
 	vmcs_write16(HOST_SS_SELECTOR, __KERNEL_DS);
 	vmcs_write16(HOST_DS_SELECTOR, __KERNEL_DS);
@@ -447,6 +505,7 @@ static __init void init_host_state_area(struct vcpu_vmx *vmx, struct pkvm_hyp *p
 	vmcs_writel(HOST_TR_BASE, (unsigned long)&pcpu->tss);
 	vmcs_writel(HOST_GDTR_BASE, (unsigned long)(&pcpu->gdt_page));
 	vmcs_writel(HOST_IDTR_BASE, (unsigned long)(&pcpu->idt_page));
+#endif
 
 	rdmsrl(MSR_EFER, msrl);
 	vmcs_write64(HOST_IA32_EFER, msrl);

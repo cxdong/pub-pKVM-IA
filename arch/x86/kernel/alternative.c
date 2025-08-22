@@ -250,7 +250,7 @@ static void *its_allocate_thunk(void *addr, int reg)
 	 * than using dynamic thunks as the page holding the thunk code belongs
 	 * to the host which will be not accessible to the pkvm after deprivilege.
 	 */
-	if (!is_pkvm_text(addr))
+	if (is_pkvm_text(addr))
 		return NULL;
 
 #ifdef CONFIG_FINEIBT

@@ -7,6 +7,7 @@
 #include "ept.h"
 #include "host_vmx.h"
 #include "init_finalize.h"
+#include "pkvm/lapic.h"
 #include "pkvm.h"
 
 #define CR4			4
@@ -118,8 +119,28 @@ static int handle_read_msr(struct kvm_vcpu *vcpu)
 
 static int handle_write_msr(struct kvm_vcpu *vcpu)
 {
-	kvm_inject_gp(vcpu, 0);
-	return X86EMUL_UNHANDLEABLE;
+	unsigned long msr = vcpu->arch.regs[VCPU_REGS_RCX];
+	int ret = X86EMUL_CONTINUE;
+	u32 low, high;
+	u64 val;
+
+	low = vcpu->arch.regs[VCPU_REGS_RAX];
+	high = vcpu->arch.regs[VCPU_REGS_RDX];
+	val = low | ((u64)high << 32);
+
+	switch (msr) {
+	case MSR_IA32_APICBASE:
+	case APIC_BASE_MSR ... APIC_BASE_MSR + 0xff:
+		if (!pkvm_lapic_msr_write(msr, val))
+			break;
+		fallthrough;
+	default:
+		kvm_inject_gp(vcpu, 0);
+		ret = X86EMUL_UNHANDLEABLE;
+		break;
+	}
+
+	return ret;
 }
 
 static void handle_preemption_timer(struct kvm_vcpu *vcpu)

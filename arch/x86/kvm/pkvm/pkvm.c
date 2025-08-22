@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/types.h>
+#include <linux/kvm_host.h>
 #include "init_finalize.h"
 #include "pkvm.h"
+#include "lapic.h"
 
 /*
  * Needed by kvm_spurious_fault() which is a generic fault function for the
@@ -32,4 +34,13 @@ int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
 	}
 
 	return ret;
+}
+
+void pkvm_kick_vcpu(struct kvm_vcpu *vcpu)
+{
+	/* No need to kick if a vcpu is already out of guest mode */
+	if (kvm_vcpu_exiting_guest_mode(vcpu) != IN_GUEST_MODE)
+		return;
+
+	pkvm_lapic_send_init(READ_ONCE(vcpu->cpu));
 }

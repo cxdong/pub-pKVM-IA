@@ -6,6 +6,7 @@
 #include "init_finalize.h"
 #include "host_vmx.h"
 #include "pkvm.h"
+#include "ept.h"
 
 #define CR4			4
 #define MOV_TO_CR		0
@@ -25,6 +26,7 @@ static int vmx_hyp_mmu_finalize(struct pkvm_pgtable *pgt)
 
 static struct pkvm_init_ops vmx_init_ops = {
 	.hyp_mmu_finalize = vmx_hyp_mmu_finalize,
+	.host_mmu_init = pkvm_host_ept_init,
 };
 
 static void skip_emulated_instruction(void)

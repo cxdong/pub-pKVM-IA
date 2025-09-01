@@ -118,7 +118,15 @@ static int create_hyp_mmu(const struct pkvm_mem_info infos[], int nr_infos)
 		}
 	}
 
-	return back_vmemmap(__pkvm_pa(pkvm_vmemmap_base));
+	ret = back_vmemmap(__pkvm_pa(pkvm_vmemmap_base));
+	if (ret)
+		return ret;
+
+	/* Load pkvm hypervisor's MMU to use pkvm vmemmap */
+	pkvm_hyp_mmu_load();
+
+	/* Update the pkvm mmu to use pkvm buddy allocator */
+	return pkvm_hyp_mmu_switch_to_buddy(hyp_pgt_base, nr_pages);
 }
 
 static int finalize_global(struct pkvm_mem_info infos[], int nr_infos)
@@ -162,6 +170,13 @@ int pkvm_init_finalize(struct pkvm_mem_info infos[], int nr_infos,
 			return ret;
 
 		global_finalized = true;
+	} else {
+		/*
+		 * The pkvm hypervisor's MMU was already loaded on the first
+		 * finalized CPU during the global finalize. Need to load it
+		 * on all the other CPUs as well.
+		 */
+		pkvm_hyp_mmu_load();
 	}
 
 	return pkvm_hyp_mmu_finalize(hyp_mmu_finalize_fn);

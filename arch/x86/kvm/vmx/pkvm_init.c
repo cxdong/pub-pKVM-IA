@@ -501,7 +501,7 @@ static __init void init_execution_control(struct vcpu_vmx *vmx)
 	/*
 	 * Set the VMXE bit in CR4_READ_SHADOW so that the host VM will see the
 	 * consistent values between "native" cr4 and its cached cpu_tlbstate.cr4
-	 * (which is set when turns on VMX via kvm_vcpu_vmxon).
+	 * (which is set when turns on VMX via kvm_cpu_vmxon).
 	 */
 	vmcs_writel(CR4_READ_SHADOW, X86_CR4_VMXE);
 }
@@ -683,13 +683,7 @@ int __init vmx_pkvm_init(void)
 	}
 
 	pr_info("All cpus are in guest mode!\n");
-	/*
-	 * TODO: Return -EFAULT to abort KVM init if the host has been
-	 * successfully deprivileged to prevent the host using vmx
-	 * instructions which are not supported by the pkvm hypervisor
-	 * until the pvVMCS is added.
-	 */
-	return -EFAULT;
+	return 0;
 out:
 	/*
 	 * As the reserved memory at the pkvm_mem_base will not be

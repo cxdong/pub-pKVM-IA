@@ -8737,31 +8737,19 @@ static void __exit vmx_exit(void)
 module_exit(vmx_exit);
 
 #ifdef CONFIG_PKVM_INTEL
-static int __init do_vmx_pkvm_init(void)
+static void __init do_vmx_pkvm_init(void)
 {
 	int r;
 
 #if IS_ENABLED(CONFIG_HYPERV)
 	if (enlightened_vmcs && enable_pkvm) {
 		pr_warn("pKVM cannot be enabled due to conflict with enlightened_vmcs!\n");
-		return 0;
+		return;
 	}
 #endif
 	r = vmx_pkvm_init();
-	if (r == -EFAULT) {
-		/*
-		 * As some kind of pkvm initialization failures are harmless to
-		 * the host, e.g., failures related with the pkvm reserved
-		 * memory, allow the KVM subsystem continue to run and only stop
-		 * it specifically for the error -EFAULT.
-		 */
-		pr_err("pKVM init fatal error. Abort KVM init\n");
-		return r;
-	} else if (r) {
-		pr_warn("pKVM init failed with non-fatal error %d. Continue KVM init\n", r);
-	}
-
-	return 0;
+	if (r)
+		pr_warn("pKVM init failed with error %d. Continue KVM init\n", r);
 }
 #endif
 
@@ -8779,9 +8767,7 @@ static int __init vmx_init(void)
 	hv_init_evmcs();
 
 #ifdef CONFIG_PKVM_INTEL
-	r = do_vmx_pkvm_init();
-	if (r)
-		return r;
+	do_vmx_pkvm_init();
 #endif
 
 	r = kvm_x86_vendor_init(&vt_init_ops);

@@ -52,6 +52,20 @@ struct pkvm_mem_info {
 
 enum pkvm_fn {
 	__pkvm__init_finalize,
+
+	/* Below PV interfaces should use kvm_call_pkvm_inout */
+	PKVM_FIRST_INOUT_PV_INTERFACE,
+};
+
+#define PKVM_FN_DATA_LEN		4
+
+union pkvm_fn_data {
+	struct {
+		u64 val1;
+		u64 val2;
+		u64 val3;
+		u64 val4;
+	};
 };
 
 #define __kvm_call_pkvm_0(f)		kvm_hypercall4(f, 0, 0, 0, 0)
@@ -76,8 +90,31 @@ enum pkvm_fn {
 #define CALL_PKVM(f)		CONCATENATE(__pkvm__, f)
 #define kvm_call_pkvm(f, ...)								\
 	({										\
+		BUILD_BUG_ON(CALL_PKVM(f) >= PKVM_FIRST_INOUT_PV_INTERFACE);		\
 		CONCATENATE(__kvm_call_pkvm_,						\
 			    COUNT_ARGS(__VA_ARGS__))(CALL_PKVM(f), ##__VA_ARGS__);	\
+	})
+#define __kvm_call_pkvm_inout_4(f, p1, p2, p3, p4, o)					\
+	({										\
+		int ret;								\
+		asm volatile(KVM_HYPERCALL						\
+			: "=a"(ret), "=b"((o)->val1), "=c"((o)->val2),			\
+			  "=d"((o)->val3), "=S"((o)->val4)				\
+			: "a"(f), "b"(p1), "c"(p2), "d"(p3), "S"(p4)			\
+			: "memory");							\
+		ret;									\
+	})
+#define kvm_call_pkvm_inout(f, inout)							\
+	({										\
+		u64 p1 = (inout)->val1;							\
+		u64 p2 = (inout)->val2;							\
+		u64 p3 = (inout)->val3;							\
+		u64 p4 = (inout)->val4;							\
+		BUILD_BUG_ON(CALL_PKVM(f) < PKVM_FIRST_INOUT_PV_INTERFACE);		\
+		BUILD_BUG_ON(sizeof(union pkvm_fn_data) !=				\
+			     sizeof(u64) * PKVM_FN_DATA_LEN);				\
+		CONCATENATE(__kvm_call_pkvm_inout_,					\
+			    PKVM_FN_DATA_LEN)(CALL_PKVM(f), p1, p2, p3, p4, (inout));	\
 	})
 
 #ifdef CONFIG_DYNAMIC_MEMORY_LAYOUT

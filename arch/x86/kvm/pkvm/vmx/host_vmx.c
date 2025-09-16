@@ -4,6 +4,7 @@
 #include <kvm_emulate.h>
 #include <vmx/x86_ops.h>
 #include "host_vmx.h"
+#include "pkvm.h"
 
 #define CR4			4
 #define MOV_TO_CR		0
@@ -38,6 +39,19 @@ static void handle_cpuid(struct kvm_vcpu *vcpu)
 	vcpu->arch.regs[VCPU_REGS_RBX] = ebx;
 	vcpu->arch.regs[VCPU_REGS_RCX] = ecx;
 	vcpu->arch.regs[VCPU_REGS_RDX] = edx;
+}
+
+static void handle_vmcall(struct kvm_vcpu *vcpu)
+{
+	u64 func, a0, a1, a2, a3;
+
+	func = vcpu->arch.regs[VCPU_REGS_RAX];
+	a0 = vcpu->arch.regs[VCPU_REGS_RBX];
+	a1 = vcpu->arch.regs[VCPU_REGS_RCX];
+	a2 = vcpu->arch.regs[VCPU_REGS_RDX];
+	a3 = vcpu->arch.regs[VCPU_REGS_RSI];
+
+	vcpu->arch.regs[VCPU_REGS_RAX] = pkvm_handle_kvm_call(func, a0, a1, a2, a3);
 }
 
 static void handle_cr(struct kvm_vcpu *vcpu)
@@ -179,6 +193,10 @@ void pkvm_host_vmexit_main(struct vcpu_vmx *vmx)
 		break;
 	case EXIT_REASON_CPUID:
 		handle_cpuid(vcpu);
+		skip_instruction = true;
+		break;
+	case EXIT_REASON_VMCALL:
+		handle_vmcall(vcpu);
 		skip_instruction = true;
 		break;
 	case EXIT_REASON_CR_ACCESS:

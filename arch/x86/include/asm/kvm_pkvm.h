@@ -33,6 +33,10 @@ struct pkvm_hyp {
 #define PKVM_HYP_PAGES		(PAGE_ALIGN(sizeof(struct pkvm_hyp)) >> PAGE_SHIFT)
 #define PKVM_PCPU_PAGES		(PAGE_ALIGN(sizeof(struct pkvm_pcpu)) >> PAGE_SHIFT)
 
+enum pkvm_fn {
+	__pkvm__init_finalize,
+};
+
 #define __kvm_call_pkvm_0(f)		kvm_hypercall4(f, 0, 0, 0, 0)
 #define __kvm_call_pkvm_1(f, p1)							\
 	({										\

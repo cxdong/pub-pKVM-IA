@@ -23,7 +23,7 @@ int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
 
 	switch (func) {
 	case __pkvm__init_finalize:
-		ret = pkvm_init_finalize(a0, a1);
+		ret = pkvm_init_finalize((struct pkvm_mem_info *)a0, a1);
 		break;
 	default:
 		ret = -EINVAL;

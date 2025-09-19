@@ -238,7 +238,7 @@ int pkvm_host_mmu_init(void *pool_base, unsigned long pool_pages, host_mmu_init_
 {
 	pkvm_spin_lock_init(&host_mmu_lock);
 
-	return fn ? fn(&host_mmu, pool_base, pool_pages) : 0;
+	return fn ? fn(&host_mmu, pool_base, pool_pages) : -EOPNOTSUPP;
 }
 
 int pkvm_host_mmu_finalize(host_mmu_finalize_fn_t fn)

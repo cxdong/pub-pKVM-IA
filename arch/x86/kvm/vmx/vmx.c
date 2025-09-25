@@ -7759,6 +7759,7 @@ free_vpid:
 	free_vpid(vmx->vpid);
 	return err;
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 #define L1TF_MSG_SMT "L1TF CPU bug present and SMT on, data leak possible. See CVE-2018-3646 and https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/l1tf.html for details.\n"
 #define L1TF_MSG_L1D "L1TF CPU bug present and virtualization mitigation disabled, data leak possible. See CVE-2018-3646 and https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/l1tf.html for details.\n"
@@ -7768,6 +7769,12 @@ int vmx_vm_init(struct kvm *kvm)
 	if (!ple_gap)
 		kvm->arch.pause_in_guest = true;
 
+	/*
+	 * The CPU which can run the pKVM hypervisor doesn't have L1TF
+	 * vulnerability. This is guaranteed by the pKVM deprivilege code. Thus
+	 * it is not necessary for the pKVM to check the L1TF mitigation.
+	 */
+#ifndef __PKVM_HYP__
 	if (boot_cpu_has(X86_BUG_L1TF) && enable_ept) {
 		switch (l1tf_mitigation) {
 		case L1TF_MITIGATION_OFF:
@@ -7791,9 +7798,11 @@ int vmx_vm_init(struct kvm *kvm)
 			break;
 		}
 	}
+#endif
 	return 0;
 }
 
+#ifndef __PKVM_HYP__
 u8 vmx_get_mt_mask(struct kvm_vcpu *vcpu, gfn_t gfn, bool is_mmio)
 {
 	/*
@@ -8949,6 +8958,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.disable_virtualization_cpu = vmx_disable_virtualization_cpu,
 
 	.vm_size = sizeof(struct kvm_vmx),
+	.vm_init = vmx_vm_init,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {

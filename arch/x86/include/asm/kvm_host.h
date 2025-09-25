@@ -1364,6 +1364,14 @@ pop_pkvm_memcache(struct pkvm_memcache *mc, void *(*to_va)(phys_addr_t phys))
 	return mem_range;
 }
 
+static inline void free_pkvm_memcache(struct pkvm_memcache *mc,
+				      void (*free)(struct pkvm_mem_range range),
+				      void *(*to_va)(phys_addr_t phys))
+{
+	while (mc->count)
+		free(pop_pkvm_memcache(mc, to_va));
+}
+
 struct kvm_arch {
 	unsigned long n_used_mmu_pages;
 	unsigned long n_requested_mmu_pages;

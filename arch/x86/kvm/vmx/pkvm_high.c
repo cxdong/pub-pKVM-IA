@@ -5,6 +5,29 @@
 #include "x86_ops.h"
 #include "vmx.h"
 
+static void *kvm_host_va(phys_addr_t phys)
+{
+	return __va(phys);
+}
+
+static void host_free_pkvm_mem_range(struct pkvm_mem_range mem_range)
+{
+	if (!mem_range.size)
+		return;
+
+	WARN_ON_ONCE(!PAGE_ALIGNED(mem_range.size));
+
+	if (mem_range.size > PAGE_SIZE)
+		free_pages_exact(__va(mem_range.addr), mem_range.size);
+	else
+		free_page((unsigned long)__va(mem_range.addr));
+}
+
+static void host_free_pkvm_memcache(struct pkvm_memcache *mc)
+{
+	free_pkvm_memcache(mc, host_free_pkvm_mem_range, kvm_host_va);
+}
+
 static int pkvm_check_processor_compat(void)
 {
 	return kvm_call_pkvm(check_processor_compatibility);
@@ -80,6 +103,21 @@ free_page:
 	return ret;
 }
 
+static void pkvm_vm_destroy(struct kvm *kvm)
+{
+	union pkvm_fn_data inout = { 0 };
+	int ret;
+
+	inout.vm_handle = kvm->arch.pkvm_vm_handle;
+	ret = kvm_call_pkvm_inout(vm_destroy, &inout);
+	if (ret)
+		return;
+
+	host_free_pkvm_memcache(&inout.memcache);
+
+	vmx_vm_destroy(kvm);
+}
+
 struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -91,4 +129,5 @@ struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 
 	.vm_size = sizeof(struct kvm_vmx),
 	.vm_init = pkvm_vm_init,
+	.vm_destroy = pkvm_vm_destroy,
 };

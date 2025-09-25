@@ -663,4 +663,10 @@ int ____kvm_emulate_hypercall(struct kvm_vcpu *vcpu, unsigned long nr,
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu);
 void kvm_user_return_msr_cpu_online(void);
 
+#define KVM_MAX_MCE_BANKS			32
+#define KVM_MCE_BANKS				(KVM_MAX_MCE_BANKS * 4)
+#define KVM_MCI_CTL2_BANKS			(KVM_MAX_MCE_BANKS)
+#define KVM_MCE_SIZE				(KVM_MCE_BANKS * sizeof(u64))
+#define KVM_MCI_CTL2_SIZE			(KVM_MCI_CTL2_BANKS * sizeof(u64))
+
 #endif

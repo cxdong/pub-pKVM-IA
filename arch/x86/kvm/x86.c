@@ -97,7 +97,6 @@
 #include "trace.h"
 
 #define MAX_IO_MSRS 256
-#define KVM_MAX_MCE_BANKS 32
 #endif /* !defined(__PKVM_HYP__) */
 
 /*
@@ -12327,9 +12326,9 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 		goto fail_free_lapic;
 	vcpu->arch.pio_data = page_address(page);
 
-	vcpu->arch.mce_banks = kcalloc(KVM_MAX_MCE_BANKS * 4, sizeof(u64),
+	vcpu->arch.mce_banks = kcalloc(KVM_MCE_BANKS, sizeof(u64),
 				       GFP_KERNEL_ACCOUNT);
-	vcpu->arch.mci_ctl2_banks = kcalloc(KVM_MAX_MCE_BANKS, sizeof(u64),
+	vcpu->arch.mci_ctl2_banks = kcalloc(KVM_MCI_CTL2_BANKS, sizeof(u64),
 					    GFP_KERNEL_ACCOUNT);
 	if (!vcpu->arch.mce_banks || !vcpu->arch.mci_ctl2_banks)
 		goto fail_free_mce_banks;

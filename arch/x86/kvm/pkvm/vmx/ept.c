@@ -174,6 +174,11 @@ int pkvm_host_ept_init(struct pkvm_pgtable *pgt, void *pool_base,
 	};
 	int ret;
 
+	if (!cpu_has_vmx_ept_4levels() ||
+	    !cpu_has_vmx_ept_mt_wb() ||
+	    !cpu_has_vmx_invept_global())
+		return -EOPNOTSUPP;
+
 	ret = pkvm_pool_init(&host_ept_pool, pfn, pool_pages, 0);
 	if (ret)
 		return ret;

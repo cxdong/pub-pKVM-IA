@@ -93,6 +93,21 @@ void pkvm_clflush_cache_range(void *vaddr, unsigned int size)
 	mb();
 }
 
+unsigned long pkvm_host_gpa_to_phys(gpa_t gpa)
+{
+	/*
+	 * Host VM's GPA is identify-mapped in the host mmu, thus GPA equals
+	 * physical address.
+	 */
+	return gpa;
+}
+
+gpa_t pkvm_phys_to_host_gpa(unsigned long phys)
+{
+	/* See comments in pkvm_host_gpa_to_phys */
+	return phys;
+}
+
 /*
  * Ensure that __kcfi_typeid_ symbols are emitted for functions that may
  * not be indirectly called with all configurations.

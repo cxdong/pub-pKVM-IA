@@ -4,6 +4,7 @@
 
 #include <linux/types.h>
 #include <linux/range.h>
+#include <linux/kvm_types.h>
 #include <linux/mm.h>
 #include <vdso/limits.h>
 #include <asm/page.h>
@@ -110,6 +111,8 @@ static inline bool is_mmio_range(unsigned long phys, unsigned long size)
 }
 
 void pkvm_clflush_cache_range(void *vaddr, unsigned int size);
+unsigned long pkvm_host_gpa_to_phys(gpa_t gpa);
+gpa_t pkvm_phys_to_host_gpa(unsigned long phys);
 
 static inline void pkvm_clear_memory(void *va, size_t size)
 {

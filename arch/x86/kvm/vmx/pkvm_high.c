@@ -240,6 +240,29 @@ free_pml:
 	return ret;
 }
 
+static void pkvm_vcpu_free(struct kvm_vcpu *vcpu)
+{
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+	union pkvm_fn_data inout = { 0 };
+	int ret;
+
+	inout.vm_handle = vcpu->kvm->arch.pkvm_vm_handle;
+	inout.vcpu_handle = vcpu->arch.pkvm_vcpu_handle;
+
+	ret = kvm_call_pkvm_inout(vcpu_free, &inout);
+	if (ret) {
+		kvm_err("The pkvm-hyp is failed to free pkvm_vcpu: %d", ret);
+		return;
+	}
+
+	host_free_pkvm_memcache(&inout.memcache);
+
+	if (enable_pml)
+		free_pml_buffer(vmx);
+	pkvm_free_loaded_vmcs(vmx->loaded_vmcs);
+	free_ve_info(vmx);
+}
+
 struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -254,4 +277,5 @@ struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 	.vm_destroy = pkvm_vm_destroy,
 
 	.vcpu_create = pkvm_vcpu_create,
+	.vcpu_free = pkvm_vcpu_free,
 };

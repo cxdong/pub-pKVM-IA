@@ -13,6 +13,11 @@
 #undef CONFIG_PRINTK
 #endif
 #undef CONFIG_CALL_THUNKS_DEBUG
+#undef CONFIG_PARAVIRT
+#undef CONFIG_PARAVIRT_XXL
+#undef CONFIG_PARAVIRT_SPINLOCKS
+
+#define NOTRACE
 
 /*
  * Avoid undefining the below options, as it would change the layout of some
@@ -40,6 +45,8 @@
 /*
 #undef CONFIG_BUG
 #undef CONFIG_GENERIC_BUG
+#undef CONFIG_TRACEPOINTS
+#undef CONFIG_DEBUG_PREEMPT
 */
 
 #endif /* __PKVM_X86_UNDEF_H */

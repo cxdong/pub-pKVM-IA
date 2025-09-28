@@ -47,5 +47,7 @@ int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,
 			 union pkvm_fn_data *out);
 void pkvm_kick_vcpu(struct kvm_vcpu *vcpu);
 int pkvm_x86_vendor_init(struct kvm_x86_init_ops *ops);
+struct pkvm_vm *pkvm_get_vm(int vm_handle);
+void pkvm_put_vm(struct pkvm_vm *pkvm_vm);
 
 #endif /* __PKVM_X86_PKVM_H */

@@ -5,6 +5,7 @@
 #include "init_finalize.h"
 #include "memory.h"
 #include "mmu.h"
+#include "pkvm/lapic.h"
 
 static void *hyp_pgt_base;
 static void *host_pgt_base;
@@ -277,6 +278,10 @@ int pkvm_init_finalize(struct pkvm_mem_info infos[], int nr_infos,
 		 */
 		pkvm_hyp_mmu_load();
 	}
+
+	ret = pkvm_lapic_init();
+	if (ret)
+		return ret;
 
 	ret = pkvm_hyp_mmu_finalize(hyp_mmu_finalize_fn);
 	if (ret)

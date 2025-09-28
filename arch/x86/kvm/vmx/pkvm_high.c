@@ -28,6 +28,56 @@ static void host_free_pkvm_memcache(struct pkvm_memcache *mc)
 	free_pkvm_memcache(mc, host_free_pkvm_mem_range, kvm_host_va);
 }
 
+static void free_pml_buffer(struct vcpu_vmx *vmx)
+{
+	if (vmx->pml_pg) {
+		free_page((unsigned long)vmx->pml_pg);
+		vmx->pml_pg = NULL;
+	}
+}
+
+static void free_ve_info(struct vcpu_vmx *vmx)
+{
+	if (vmx->ve_info) {
+		free_page((unsigned long)vmx->ve_info);
+		vmx->ve_info = NULL;
+	}
+}
+
+static void pkvm_free_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
+{
+	if (!loaded_vmcs->vmcs)
+		return;
+	free_vmcs(loaded_vmcs->vmcs);
+	loaded_vmcs->vmcs = NULL;
+	if (loaded_vmcs->msr_bitmap)
+		free_page((unsigned long)loaded_vmcs->msr_bitmap);
+	WARN_ON(loaded_vmcs->shadow_vmcs != NULL);
+}
+
+static int pkvm_alloc_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
+{
+	loaded_vmcs->vmcs = alloc_vmcs(false);
+	if (!loaded_vmcs->vmcs)
+		return -ENOMEM;
+
+	loaded_vmcs->shadow_vmcs = NULL;
+	loaded_vmcs->cpu = -1;
+
+	if (cpu_has_vmx_msr_bitmap()) {
+		loaded_vmcs->msr_bitmap = (unsigned long *)
+				__get_free_page(GFP_KERNEL_ACCOUNT);
+		if (!loaded_vmcs->msr_bitmap)
+			goto out_vmcs;
+	}
+
+	return 0;
+
+out_vmcs:
+	pkvm_free_loaded_vmcs(loaded_vmcs);
+	return -ENOMEM;
+}
+
 static int pkvm_check_processor_compat(void)
 {
 	return kvm_call_pkvm(check_processor_compatibility);
@@ -118,6 +168,78 @@ static void pkvm_vm_destroy(struct kvm *kvm)
 	vmx_vm_destroy(kvm);
 }
 
+static int pkvm_vcpu_create(struct kvm_vcpu *vcpu)
+{
+	void *pkvm_vcpu, *fps;
+	struct vcpu_vmx *vmx;
+	struct page *page;
+	size_t fps_size;
+	int ret;
+
+	vmx = to_vmx(vcpu);
+
+	INIT_LIST_HEAD(&vmx->pi_wakeup_list);
+
+	/*
+	 * If PML is turned on, failure on enabling PML just results in failure
+	 * of creating the vcpu, therefore we can simplify PML logic (by
+	 * avoiding dealing with cases, such as enabling PML partially on vcpus
+	 * for the guest), etc.
+	 */
+	if (enable_pml) {
+		page = alloc_page(GFP_KERNEL_ACCOUNT | __GFP_ZERO);
+		if (!page)
+			return -ENOMEM;
+		vmx->pml_pg = page_to_virt(page);
+	}
+
+	ret = pkvm_alloc_loaded_vmcs(&vmx->vmcs01);
+	if (ret < 0)
+		goto free_pml;
+
+	vmx->loaded_vmcs = &vmx->vmcs01;
+	vmx->loaded_vmcs->cpu = -1;
+
+	ret = -ENOMEM;
+
+	BUILD_BUG_ON(sizeof(*vmx->ve_info) > PAGE_SIZE);
+	/* ve_info must be page aligned. */
+	page = alloc_page(GFP_KERNEL_ACCOUNT | __GFP_ZERO);
+	if (!page)
+		goto free_vmcs;
+	vmx->ve_info = page_to_virt(page);
+
+	pkvm_vcpu = alloc_pages_exact(PKVM_VMX_VCPU_SIZE, GFP_KERNEL_ACCOUNT);
+	if (!pkvm_vcpu)
+		goto free_ve;
+
+	fps_size = pkvm_guest_initial_fpstate_size(vcpu->kvm);
+	fps = alloc_pages_exact(fps_size, GFP_KERNEL_ACCOUNT);
+	if (!fps)
+		goto free_vcpu;
+
+	ret = kvm_call_pkvm(vcpu_create, vcpu->kvm->arch.pkvm_vm_handle,
+			    __pa(vcpu), __pa(pkvm_vcpu), __pa(fps));
+	if (ret < 0)
+		goto free_fpu;
+
+	vcpu->arch.pkvm_vcpu_handle = ret;
+
+	return 0;
+
+free_fpu:
+	free_pages_exact(fps, fps_size);
+free_vcpu:
+	free_pages_exact(pkvm_vcpu, PKVM_VMX_VCPU_SIZE);
+free_ve:
+	free_ve_info(vmx);
+free_vmcs:
+	pkvm_free_loaded_vmcs(vmx->loaded_vmcs);
+free_pml:
+	free_pml_buffer(vmx);
+	return ret;
+}
+
 struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -130,4 +252,6 @@ struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 	.vm_size = sizeof(struct kvm_vmx),
 	.vm_init = pkvm_vm_init,
 	.vm_destroy = pkvm_vm_destroy,
+
+	.vcpu_create = pkvm_vcpu_create,
 };

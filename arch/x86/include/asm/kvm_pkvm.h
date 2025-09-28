@@ -3,7 +3,6 @@
 #define _ASM_X86_KVM_PKVM_H
 
 #ifdef CONFIG_PKVM_X86
-#include <linux/memblock.h>
 #include <linux/mm.h>
 #include <linux/memblock.h>
 #include <asm/pkvm_image.h>

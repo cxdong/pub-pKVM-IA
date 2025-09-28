@@ -72,6 +72,9 @@
 #include "smm.h"
 #include "vmx_onhyperv.h"
 #include "posted_intr.h"
+#ifdef __PKVM_HYP__
+#include "pkvm.h"
+#endif
 
 MODULE_AUTHOR("Qumranet");
 MODULE_DESCRIPTION("KVM support for VMX (Intel VT-x) extensions");
@@ -8821,4 +8824,20 @@ err_l1d_flush:
 	return r;
 }
 module_init(vmx_init);
+
+#else /* defined(__PKVM_HYP__) */
+
+struct kvm_x86_ops vt_x86_ops __initdata = {
+	.name = KBUILD_MODNAME,
+};
+
+struct kvm_x86_init_ops vt_init_ops __initdata = {
+	.runtime_ops = &vt_x86_ops,
+};
+
+int pkvm_vmx_init(void)
+{
+	return pkvm_x86_vendor_init(&vt_init_ops);
+}
+
 #endif /* !defined(__PKVM_HYP__) */

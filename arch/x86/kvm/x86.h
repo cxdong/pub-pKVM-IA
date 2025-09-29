@@ -656,5 +656,6 @@ int ____kvm_emulate_hypercall(struct kvm_vcpu *vcpu, unsigned long nr,
 })
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu);
+void kvm_user_return_msr_cpu_online(void);
 
 #endif

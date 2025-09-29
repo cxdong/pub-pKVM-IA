@@ -8987,6 +8987,8 @@ int pkvm_vmx_init(void)
 	for_each_possible_cpu(cpu)
 		INIT_LIST_HEAD(&per_cpu(loaded_vmcss_on_cpu, cpu));
 
+	kvm_vcpu_sz = sizeof(struct vcpu_vmx);
+
 	return pkvm_x86_vendor_init(&vt_init_ops);
 }
 

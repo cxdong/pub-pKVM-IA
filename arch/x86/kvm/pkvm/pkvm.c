@@ -32,11 +32,16 @@ static int pkvm_enable_virtualization_cpu(void)
 	return kvm_x86_call(enable_virtualization_cpu)();
 }
 
+static void pkvm_disable_virtualization_cpu(void)
+{
+	kvm_x86_call(disable_virtualization_cpu)();
+}
+
 int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
 			 unsigned long a1, unsigned long a2,
 			 unsigned long a3)
 {
-	int ret;
+	int ret = 0;
 
 	switch (func) {
 	case __pkvm__init_finalize:
@@ -48,6 +53,9 @@ int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
 		break;
 	case __pkvm__enable_virtualization_cpu:
 		ret = pkvm_enable_virtualization_cpu();
+		break;
+	case __pkvm__disable_virtualization_cpu:
+		pkvm_disable_virtualization_cpu();
 		break;
 	default:
 		ret = -EINVAL;

@@ -2911,9 +2911,17 @@ fault:
 
 	return -EFAULT;
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 int vmx_enable_virtualization_cpu(void)
 {
+	/*
+	 * VMX is already turned on by the pKVM hypervisor when deprivileging
+	 * the host. And intel pt feature is not supported to trace the pkvm
+	 * guest. So nothing needs to be done to enable virtualization for
+	 * guest VMs on a specific physical CPU.
+	 */
+#ifndef __PKVM_HYP__
 	int cpu = raw_smp_processor_id();
 	u64 phys_addr = __pa(per_cpu(vmxarea, cpu));
 	int r;
@@ -2936,9 +2944,11 @@ int vmx_enable_virtualization_cpu(void)
 		return r;
 	}
 
+#endif /* !defined(__PKVM_HYP__) */
 	return 0;
 }
 
+#ifndef __PKVM_HYP__
 static void vmclear_local_loaded_vmcss(void)
 {
 	int cpu = raw_smp_processor_id();
@@ -8930,6 +8940,8 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
 	.check_processor_compatibility = vmx_check_processor_compat,
+
+	.enable_virtualization_cpu = vmx_enable_virtualization_cpu,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {

@@ -506,13 +506,13 @@ noinline void invept_error(unsigned long ext, u64 eptp)
 
 #ifndef __PKVM_HYP__
 static DEFINE_PER_CPU(struct vmcs *, vmxarea);
+#endif /* !defined(__PKVM_HYP__) */
 DEFINE_PER_CPU(struct vmcs *, current_vmcs);
 /*
  * We maintain a per-CPU linked-list of VMCS loaded on that CPU. This is needed
  * when a CPU is brought down, and we need to VMCLEAR all VMCSs loaded on it.
  */
 static DEFINE_PER_CPU(struct list_head, loaded_vmcss_on_cpu);
-#endif /* !defined(__PKVM_HYP__) */
 
 static DECLARE_BITMAP(vmx_vpid_bitmap, VMX_NR_VPIDS);
 #ifndef __PKVM_HYP__
@@ -799,6 +799,7 @@ void vmx_emergency_disable_virtualization_cpu(void)
 
 	kvm_cpu_vmxoff();
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 static void __loaded_vmcs_clear(void *arg)
 {
@@ -829,6 +830,7 @@ static void __loaded_vmcs_clear(void *arg)
 	loaded_vmcs->launched = 0;
 }
 
+#ifndef __PKVM_HYP__
 void loaded_vmcs_clear(struct loaded_vmcs *loaded_vmcs)
 {
 	int cpu = loaded_vmcs->cpu;
@@ -2948,7 +2950,6 @@ int vmx_enable_virtualization_cpu(void)
 	return 0;
 }
 
-#ifndef __PKVM_HYP__
 static void vmclear_local_loaded_vmcss(void)
 {
 	int cpu = raw_smp_processor_id();
@@ -2963,14 +2964,17 @@ void vmx_disable_virtualization_cpu(void)
 {
 	vmclear_local_loaded_vmcss();
 
+#ifndef __PKVM_HYP__
 	if (kvm_cpu_vmxoff())
 		kvm_spurious_fault();
 
 	hv_reset_evmcs();
 
 	intel_pt_handle_vmx(0);
+#endif
 }
 
+#ifndef __PKVM_HYP__
 struct vmcs *alloc_vmcs_cpu(bool shadow, int cpu, gfp_t flags)
 {
 	int node = cpu_to_node(cpu);
@@ -8942,6 +8946,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.check_processor_compatibility = vmx_check_processor_compat,
 
 	.enable_virtualization_cpu = vmx_enable_virtualization_cpu,
+	.disable_virtualization_cpu = vmx_disable_virtualization_cpu,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {
@@ -8951,11 +8956,16 @@ struct kvm_x86_init_ops vt_init_ops __initdata = {
 
 int pkvm_vmx_init(void)
 {
+	int cpu;
+
 	/* Below features are disabled for simplicity */
 	enable_pmu = false;
 	nested = false;
 	flexpriority_enabled = false;
 	enable_pml = false;
+
+	for_each_possible_cpu(cpu)
+		INIT_LIST_HEAD(&per_cpu(loaded_vmcss_on_cpu, cpu));
 
 	return pkvm_x86_vendor_init(&vt_init_ops);
 }

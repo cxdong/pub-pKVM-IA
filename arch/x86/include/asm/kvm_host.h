@@ -1324,6 +1324,43 @@ enum kvm_apicv_inhibit {
 	__APICV_INHIBIT_REASON(SEV),			\
 	__APICV_INHIBIT_REASON(LOGICAL_ID_ALIASED)
 
+struct pkvm_memcache {
+	struct pkvm_mem_range {
+		phys_addr_t addr;
+		size_t size;
+	} mem_range;
+	unsigned long count;
+};
+
+static inline void push_pkvm_memcache(struct pkvm_memcache *mc,
+				      void *addr, size_t size,
+				      phys_addr_t (*to_pa)(void *virt))
+{
+	struct pkvm_mem_range *mem_range = addr;
+
+	*mem_range = mc->mem_range;
+	mc->mem_range.addr = to_pa(addr);
+	mc->mem_range.size = size;
+
+	mc->count++;
+}
+
+static inline struct pkvm_mem_range
+pop_pkvm_memcache(struct pkvm_memcache *mc, void *(*to_va)(phys_addr_t phys))
+{
+	struct pkvm_mem_range mem_range = { 0 };
+
+	if (!mc->count)
+		return mem_range;
+
+	mem_range = mc->mem_range;
+	mc->mem_range = *(struct pkvm_mem_range *)to_va(mem_range.addr);
+
+	mc->count--;
+
+	return mem_range;
+}
+
 struct kvm_arch {
 	unsigned long n_used_mmu_pages;
 	unsigned long n_requested_mmu_pages;

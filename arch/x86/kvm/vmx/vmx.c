@@ -8947,6 +8947,8 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 
 	.enable_virtualization_cpu = vmx_enable_virtualization_cpu,
 	.disable_virtualization_cpu = vmx_disable_virtualization_cpu,
+
+	.vm_size = sizeof(struct kvm_vmx),
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {
@@ -8957,6 +8959,8 @@ struct kvm_x86_init_ops vt_init_ops __initdata = {
 int pkvm_vmx_init(void)
 {
 	int cpu;
+
+	BUILD_BUG_ON(offsetof(struct kvm_vmx, kvm) != 0);
 
 	/* Below features are disabled for simplicity */
 	enable_pmu = false;

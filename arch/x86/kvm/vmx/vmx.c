@@ -73,6 +73,8 @@
 #include "vmx_onhyperv.h"
 #include "posted_intr.h"
 #ifdef __PKVM_HYP__
+#include "mem_protect.h"
+#include "memory.h"
 #include "pkvm.h"
 
 #undef module_param_named
@@ -175,6 +177,7 @@ module_param(allow_smaller_maxphyaddr, bool, S_IRUGO);
 	RTIT_STATUS_CONTEXTEN | RTIT_STATUS_TRIGGEREN | \
 	RTIT_STATUS_ERROR | RTIT_STATUS_STOPPED | \
 	RTIT_STATUS_BYTECNT))
+#endif /* !defined(__PKVM_HYP__) */
 
 /*
  * List of MSRs that can be directly passed to the guest.
@@ -200,7 +203,6 @@ static u32 vmx_possible_passthrough_msrs[MAX_POSSIBLE_PASSTHROUGH_MSRS] = {
 	MSR_CORE_C6_RESIDENCY,
 	MSR_CORE_C7_RESIDENCY,
 };
-#endif /* !defined(__PKVM_HYP__) */
 
 /*
  * These 2 parameters are used to config the controls for Pause-Loop Exiting:
@@ -517,6 +519,8 @@ static DEFINE_PER_CPU(struct list_head, loaded_vmcss_on_cpu);
 static DECLARE_BITMAP(vmx_vpid_bitmap, VMX_NR_VPIDS);
 #ifndef __PKVM_HYP__
 static DEFINE_SPINLOCK(vmx_vpid_lock);
+#else
+static pkvm_spinlock_t vmx_vpid_lock;
 #endif
 
 struct vmcs_config vmcs_config __ro_after_init;
@@ -693,6 +697,7 @@ static inline bool cpu_need_virtualize_apic_accesses(struct kvm_vcpu *vcpu)
 {
 	return flexpriority_enabled && lapic_in_kernel(vcpu);
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 static int vmx_get_passthrough_msr_slot(u32 msr)
 {
@@ -738,6 +743,7 @@ struct vmx_uret_msr *vmx_find_uret_msr(struct vcpu_vmx *vmx, u32 msr)
 	return NULL;
 }
 
+#ifndef __PKVM_HYP__
 static int vmx_set_guest_uret_msr(struct vcpu_vmx *vmx,
 				  struct vmx_uret_msr *msr, u64 data)
 {
@@ -3002,6 +3008,7 @@ void free_vmcs(struct vmcs *vmcs)
 {
 	free_page((unsigned long)vmcs);
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 /*
  * Free a VMCS, but before that VMCLEAR it on the CPU where it was last loaded
@@ -3010,19 +3017,45 @@ void free_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 {
 	if (!loaded_vmcs->vmcs)
 		return;
+#ifndef __PKVM_HYP__
 	loaded_vmcs_clear(loaded_vmcs);
 	free_vmcs(loaded_vmcs->vmcs);
+#else
+	/*
+	 * The pkvm hypervisor doesn't have smp call thus requires the vmcs is
+	 * cleared on the remote CPU when freeing it.
+	 */
+	BUG_ON(loaded_vmcs->cpu != -1);
+	pkvm_hyp_donate_host(__pkvm_pa(loaded_vmcs->vmcs), PAGE_SIZE, true);
+#endif
 	loaded_vmcs->vmcs = NULL;
 	if (loaded_vmcs->msr_bitmap)
+#ifndef __PKVM_HYP__
 		free_page((unsigned long)loaded_vmcs->msr_bitmap);
+#else
+		pkvm_hyp_donate_host(__pkvm_pa(loaded_vmcs->msr_bitmap), PAGE_SIZE, true);
+#endif
 	WARN_ON(loaded_vmcs->shadow_vmcs != NULL);
 }
 
 int alloc_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 {
+#ifndef __PKVM_HYP__
 	loaded_vmcs->vmcs = alloc_vmcs(false);
+#endif
 	if (!loaded_vmcs->vmcs)
 		return -ENOMEM;
+
+#ifdef __PKVM_HYP__
+	if (pkvm_host_donate_hyp(__pkvm_pa(loaded_vmcs->vmcs), PAGE_SIZE)) {
+		loaded_vmcs->vmcs = NULL;
+		loaded_vmcs->msr_bitmap = NULL;
+		goto out_vmcs;
+	}
+
+	memset(loaded_vmcs->vmcs, 0, vmx_basic_vmcs_size(vmcs_config.basic));
+	loaded_vmcs->vmcs->hdr.revision_id = vmx_basic_vmcs_revision_id(vmcs_config.basic);
+#endif
 
 	vmcs_clear(loaded_vmcs->vmcs);
 
@@ -3032,10 +3065,19 @@ int alloc_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 	loaded_vmcs->launched = 0;
 
 	if (cpu_has_vmx_msr_bitmap()) {
+#ifndef __PKVM_HYP__
 		loaded_vmcs->msr_bitmap = (unsigned long *)
 				__get_free_page(GFP_KERNEL_ACCOUNT);
+#endif
 		if (!loaded_vmcs->msr_bitmap)
 			goto out_vmcs;
+#ifdef __PKVM_HYP__
+		if (pkvm_host_donate_hyp(__pkvm_pa(loaded_vmcs->msr_bitmap),
+					   PAGE_SIZE)) {
+			loaded_vmcs->msr_bitmap = NULL;
+			goto out_vmcs;
+		}
+#endif
 		memset(loaded_vmcs->msr_bitmap, 0xff, PAGE_SIZE);
 	}
 
@@ -3050,6 +3092,7 @@ out_vmcs:
 	return -ENOMEM;
 }
 
+#ifndef __PKVM_HYP__
 static void free_kvm_area(void)
 {
 	int cpu;
@@ -4042,6 +4085,7 @@ static void seg_setup(int seg)
 
 	vmcs_write32(sf->ar_bytes, ar);
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 int allocate_vpid(void)
 {
@@ -4049,13 +4093,21 @@ int allocate_vpid(void)
 
 	if (!enable_vpid)
 		return 0;
+#ifndef __PKVM_HYP__
 	spin_lock(&vmx_vpid_lock);
+#else
+	pkvm_spin_lock(&vmx_vpid_lock);
+#endif
 	vpid = find_first_zero_bit(vmx_vpid_bitmap, VMX_NR_VPIDS);
 	if (vpid < VMX_NR_VPIDS)
 		__set_bit(vpid, vmx_vpid_bitmap);
 	else
 		vpid = 0;
+#ifndef __PKVM_HYP__
 	spin_unlock(&vmx_vpid_lock);
+#else
+	pkvm_spin_unlock(&vmx_vpid_lock);
+#endif
 	return vpid;
 }
 
@@ -4063,9 +4115,17 @@ void free_vpid(int vpid)
 {
 	if (!enable_vpid || vpid == 0)
 		return;
+#ifndef __PKVM_HYP__
 	spin_lock(&vmx_vpid_lock);
+#else
+	pkvm_spin_lock(&vmx_vpid_lock);
+#endif
 	__clear_bit(vpid, vmx_vpid_bitmap);
+#ifndef __PKVM_HYP__
 	spin_unlock(&vmx_vpid_lock);
+#else
+	pkvm_spin_unlock(&vmx_vpid_lock);
+#endif
 }
 
 static void vmx_msr_bitmap_l01_changed(struct vcpu_vmx *vmx)
@@ -4128,6 +4188,7 @@ void vmx_disable_intercept_for_msr(struct kvm_vcpu *vcpu, u32 msr, int type)
 		vmx_clear_msr_bitmap_write(msr_bitmap, msr);
 }
 
+#ifndef __PKVM_HYP__
 void vmx_enable_intercept_for_msr(struct kvm_vcpu *vcpu, u32 msr, int type)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -4904,7 +4965,7 @@ static void init_vmcs(struct vcpu_vmx *vmx)
 		vmcs_write64(XSS_EXIT_BITMAP, VMX_XSS_EXIT_BITMAP);
 
 	if (enable_pml) {
-		vmcs_write64(PML_ADDRESS, page_to_phys(vmx->pml_pg));
+		vmcs_write64(PML_ADDRESS, __pa(vmx->pml_pg));
 		vmcs_write16(GUEST_PML_INDEX, PML_HEAD_INDEX);
 	}
 
@@ -6323,15 +6384,21 @@ void vmx_get_entry_info(struct kvm_vcpu *vcpu, u32 *intr_info, u32 *error_code)
 	else
 		*error_code = 0;
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 static void vmx_destroy_pml_buffer(struct vcpu_vmx *vmx)
 {
 	if (vmx->pml_pg) {
-		__free_page(vmx->pml_pg);
+#ifndef __PKVM_HYP__
+		free_page((unsigned long)vmx->pml_pg);
+#else
+		pkvm_hyp_donate_host(__pkvm_pa(vmx->pml_pg), PAGE_SIZE, true);
+#endif
 		vmx->pml_pg = NULL;
 	}
 }
 
+#ifndef __PKVM_HYP__
 static void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -6357,7 +6424,7 @@ static void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 	 * Read the entries in the same order they were written, to ensure that
 	 * the dirty ring is filled in the same order the CPU wrote them.
 	 */
-	pml_buf = page_address(vmx->pml_pg);
+	pml_buf = (u64 *)vmx->pml_pg;
 
 	for (i = PML_HEAD_INDEX; i >= pml_tail_index; i--) {
 		u64 gpa;
@@ -7639,9 +7706,13 @@ void vmx_vcpu_free(struct kvm_vcpu *vcpu)
 	free_loaded_vmcs(vmx->loaded_vmcs);
 	free_page((unsigned long)vmx->ve_info);
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 {
+#ifdef __PKVM_HYP__
+	struct vcpu_vmx *shared_vmx = to_vmx(to_pkvm_vcpu(vcpu)->shared_vcpu);
+#endif
 	struct vmx_uret_msr *tsx_ctrl;
 	struct vcpu_vmx *vmx;
 	int i, err;
@@ -7662,9 +7733,18 @@ int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 	 * for the guest), etc.
 	 */
 	if (enable_pml) {
-		vmx->pml_pg = alloc_page(GFP_KERNEL_ACCOUNT | __GFP_ZERO);
-		if (!vmx->pml_pg)
+#ifndef __PKVM_HYP__
+		struct page *page = alloc_page(GFP_KERNEL_ACCOUNT | __GFP_ZERO);
+
+		if (!page)
 			goto free_vpid;
+		vmx->pml_pg = page_to_virt(page);
+#else
+		vmx->pml_pg = kern_pkvm_va(shared_vmx->pml_pg);
+		if (!vmx->pml_pg ||
+		    pkvm_host_donate_hyp(__pkvm_pa(vmx->pml_pg), PAGE_SIZE))
+			goto free_vpid;
+#endif
 	}
 
 	for (i = 0; i < kvm_nr_uret_msrs; ++i)
@@ -7680,10 +7760,15 @@ int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 			tsx_ctrl->mask = ~(u64)TSX_CTRL_CPUID_CLEAR;
 	}
 
+#ifdef __PKVM_HYP__
+	vmx->vmcs01.vmcs = kern_pkvm_va(shared_vmx->vmcs01.vmcs);
+	vmx->vmcs01.msr_bitmap = kern_pkvm_va(shared_vmx->vmcs01.msr_bitmap);
+#endif
 	err = alloc_loaded_vmcs(&vmx->vmcs01);
 	if (err < 0)
 		goto free_pml;
 
+#ifndef __PKVM_HYP__
 	/*
 	 * Use Hyper-V 'Enlightened MSR Bitmap' feature when KVM runs as a
 	 * nested (L1) hypervisor and Hyper-V in L0 supports it. Enable the
@@ -7696,6 +7781,7 @@ int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 
 		evmcs->hv_enlightenments_control.msr_bitmap = 1;
 	}
+#endif
 
 	/* The MSR bitmap starts with all ones */
 	bitmap_fill(vmx->shadow_msr_intercept.read, MAX_POSSIBLE_PASSTHROUGH_MSRS);
@@ -7719,6 +7805,13 @@ int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 
 	vmx->loaded_vmcs = &vmx->vmcs01;
 
+	/*
+	 * The pKVM hypervisor has disabled virtualize_apic_access and requires
+	 * enable_unrestricted_guest features to simplify, thus it doesn't need
+	 * to allocate apic access page, and initialize the identify map for
+	 * real mode.
+	 */
+#ifndef __PKVM_HYP__
 	if (cpu_need_virtualize_apic_accesses(vcpu)) {
 		err = kvm_alloc_apic_access_page(vcpu->kvm);
 		if (err)
@@ -7730,9 +7823,11 @@ int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 		if (err)
 			goto free_vmcs;
 	}
+#endif
 
 	err = -ENOMEM;
 	if (vmcs_config.cpu_based_2nd_exec_ctrl & SECONDARY_EXEC_EPT_VIOLATION_VE) {
+#ifndef __PKVM_HYP__
 		struct page *page;
 
 		BUILD_BUG_ON(sizeof(*vmx->ve_info) > PAGE_SIZE);
@@ -7743,6 +7838,12 @@ int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 			goto free_vmcs;
 
 		vmx->ve_info = page_to_virt(page);
+#else
+		vmx->ve_info = kern_pkvm_va(shared_vmx->ve_info);
+		if (!vmx->ve_info ||
+		    pkvm_host_donate_hyp(__pkvm_pa(vmx->ve_info), PAGE_SIZE))
+			goto free_vmcs;
+#endif
 	}
 
 	if (vmx_can_use_ipiv(vcpu))
@@ -7759,7 +7860,6 @@ free_vpid:
 	free_vpid(vmx->vpid);
 	return err;
 }
-#endif /* !defined(__PKVM_HYP__) */
 
 #define L1TF_MSG_SMT "L1TF CPU bug present and SMT on, data leak possible. See CVE-2018-3646 and https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/l1tf.html for details.\n"
 #define L1TF_MSG_L1D "L1TF CPU bug present and virtualization mitigation disabled, data leak possible. See CVE-2018-3646 and https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/l1tf.html for details.\n"
@@ -8965,6 +9065,8 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.vm_size = sizeof(struct kvm_vmx),
 	.vm_init = vmx_vm_init,
 	.vm_destroy = vmx_vm_destroy,
+
+	.vcpu_create = vmx_vcpu_create,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {

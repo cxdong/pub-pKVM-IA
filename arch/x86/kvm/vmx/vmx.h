@@ -336,7 +336,7 @@ struct vcpu_vmx {
 	/* PML is written backwards: this is the first entry written by the CPU */
 #define PML_HEAD_INDEX		(PML_LOG_NR_ENTRIES-1)
 
-	struct page *pml_pg;
+	void *pml_pg;
 
 	/* apic deadline value in host tsc */
 	u64 hv_deadline_tsc;

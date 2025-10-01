@@ -108,6 +108,16 @@ gpa_t pkvm_phys_to_host_gpa(unsigned long phys)
 	return phys;
 }
 
+void *pkvm_host_gpa_to_virt(gpa_t gpa)
+{
+	return __pkvm_va(pkvm_host_gpa_to_phys(gpa));
+}
+
+gpa_t pkvm_virt_to_host_gpa(void *addr)
+{
+	return pkvm_phys_to_host_gpa(__pkvm_pa(addr));
+}
+
 /*
  * Ensure that __kcfi_typeid_ symbols are emitted for functions that may
  * not be indirectly called with all configurations.

@@ -83,6 +83,10 @@ static __init void pkvm_setup_syms(void)
 	pkvm_sym(nr_cpu_ids) = nr_cpu_ids;
 	pkvm_sym(fpu_kernel_cfg) = fpu_kernel_cfg;
 	pkvm_sym(fpu_user_cfg) = fpu_user_cfg;
+	asm volatile(
+		"movq x86_pred_cmd(%%rip), %0\n"
+		: "=r" (pkvm_sym(x86_pred_cmd))
+	);
 }
 
 static __init int pkvm_setup_host_vmcs_config(void)

@@ -6398,6 +6398,18 @@ static void vmx_destroy_pml_buffer(struct vcpu_vmx *vmx)
 	}
 }
 
+static void vmx_destroy_ve(struct vcpu_vmx *vmx)
+{
+	if (vmx->ve_info) {
+#ifdef __PKVM_HYP__
+		pkvm_hyp_donate_host(__pkvm_pa(vmx->ve_info), PAGE_SIZE, true);
+#else
+		free_page((unsigned long)vmx->ve_info);
+#endif
+		vmx->ve_info = NULL;
+	}
+}
+
 #ifndef __PKVM_HYP__
 static void vmx_flush_pml_buffer(struct kvm_vcpu *vcpu)
 {
@@ -7694,6 +7706,7 @@ fastpath_t vmx_vcpu_run(struct kvm_vcpu *vcpu, bool force_immediate_exit)
 
 	return vmx_exit_handlers_fastpath(vcpu, force_immediate_exit);
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 void vmx_vcpu_free(struct kvm_vcpu *vcpu)
 {
@@ -7704,9 +7717,8 @@ void vmx_vcpu_free(struct kvm_vcpu *vcpu)
 	free_vpid(vmx->vpid);
 	nested_vmx_free_vcpu(vcpu);
 	free_loaded_vmcs(vmx->loaded_vmcs);
-	free_page((unsigned long)vmx->ve_info);
+	vmx_destroy_ve(vmx);
 }
-#endif /* !defined(__PKVM_HYP__) */
 
 int vmx_vcpu_create(struct kvm_vcpu *vcpu)
 {
@@ -9067,6 +9079,7 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.vm_destroy = vmx_vm_destroy,
 
 	.vcpu_create = vmx_vcpu_create,
+	.vcpu_free = vmx_vcpu_free,
 };
 
 struct kvm_x86_init_ops vt_init_ops __initdata = {

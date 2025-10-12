@@ -35,7 +35,7 @@ pkvm-hyp-y			+= $(kernel-lib)/find_bit.o $(kernel-lib)/hweight.o \
 				   $(kernel-lib)/string.o $(kernel-lib)/ctype.o
 
 kvm				:= ..
-pkvm-hyp-y			+= $(kvm)/x86.o $(kvm)/cpuid.o
+pkvm-hyp-y			+= $(kvm)/x86.o $(kvm)/cpuid.o $(kvm)/mtrr.o
 
 pkvm-hyp-$(CONFIG_PKVM_INTEL)	+= vmx/host_vmentry.o vmx/host_vmx.o \
 				   $(kvm)/vmx/vmx.o vmx/idt.o vmx/ept.o \

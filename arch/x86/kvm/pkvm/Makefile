@@ -30,6 +30,7 @@ quiet_cmd_patch_retpoline = PATCH_RETPOLINE $@
 
 kernel-lib			:= ../../../../lib
 pkvm-hyp-$(CONFIG_LIST_HARDENED) += $(kernel-lib)/list_debug.o
+pkvm-hyp-y			+= $(kernel-lib)/find_bit.o $(kernel-lib)/hweight.o
 
 kvm				:= ..
 pkvm-hyp-y			+= $(kvm)/x86.o

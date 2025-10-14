@@ -989,6 +989,19 @@ static void pkvm_write_tsc_multiplier(struct kvm_vcpu *vcpu, u64 ratio)
 	kvm_x86_call(write_tsc_multiplier)(vcpu);
 }
 
+static void pkvm_load_mmu_pgd(struct kvm_vcpu *vcpu, hpa_t root_hpa, int root_level)
+{
+	/*
+	 * TODO: Implement guest memory protection rather than directly using
+	 * the EPT controlled by the host.
+	 */
+	vcpu->arch.mmu->root.hpa = root_hpa;
+	vcpu->arch.mmu->root_role.level = root_level;
+
+	kvm_x86_call(load_mmu_pgd)(vcpu, vcpu->arch.mmu->root.hpa,
+				   vcpu->arch.mmu->root_role.level);
+}
+
 static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc hc,
 					   union pkvm_hc_data *in, union pkvm_hc_data *out)
 {
@@ -1153,6 +1166,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 		break;
 	case __pkvm__write_tsc_multiplier:
 		pkvm_write_tsc_multiplier(vcpu, pkvm_hc_input1(hvcpu));
+		break;
+	case __pkvm__load_mmu_pgd:
+		pkvm_load_mmu_pgd(vcpu, pkvm_hc_input1(hvcpu), pkvm_hc_input2(hvcpu));
 		break;
 	default:
 		ret = -EINVAL;

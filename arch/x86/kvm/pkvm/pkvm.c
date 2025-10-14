@@ -952,6 +952,10 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 	case __pkvm__cancel_injection:
 		pkvm_cancel_injection(vcpu);
 		break;
+	case __pkvm__update_cr8_intercept:
+		kvm_x86_call(update_cr8_intercept)(vcpu, pkvm_hc_input1(hvcpu),
+						   pkvm_hc_input2(hvcpu));
+		break;
 	default:
 		ret = -EINVAL;
 		break;

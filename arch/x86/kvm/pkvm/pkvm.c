@@ -36,6 +36,9 @@ int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
 		ret = pkvm_init_finalize((struct pkvm_mem_info *)a0, a1,
 					 (struct pkvm_init_ops *)a2);
 		break;
+	case __pkvm__check_processor_compatibility:
+		ret = kvm_x86_call(check_processor_compatibility)();
+		break;
 	default:
 		ret = -EINVAL;
 		break;

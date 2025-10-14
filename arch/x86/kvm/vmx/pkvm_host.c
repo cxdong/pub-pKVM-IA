@@ -750,6 +750,29 @@ static u32 pkvm_get_interrupt_shadow(struct kvm_vcpu *vcpu)
 	return out.get_interrupt_shadow.data;
 }
 
+static int pkvm_interrupt_allowed(struct kvm_vcpu *vcpu, bool for_injection)
+{
+	return pkvm_hypercall(interrupt_allowed, for_injection);
+}
+
+static int pkvm_nmi_allowed(struct kvm_vcpu *vcpu, bool for_injection)
+{
+	return pkvm_hypercall(nmi_allowed, for_injection);
+}
+
+static bool pkvm_get_nmi_mask(struct kvm_vcpu *vcpu)
+{
+	union pkvm_hc_data out;
+
+	return pkvm_hypercall_out(get_nmi_mask, &out) ? false : out.get_nmi_mask.data;
+}
+
+static void pkvm_set_nmi_mask(struct kvm_vcpu *vcpu, bool masked)
+{
+	if (!vcpu->arch.guest_state_protected)
+		pkvm_hypercall(set_nmi_mask, masked);
+}
+
 static void pkvm_enable_nmi_window(struct kvm_vcpu *vcpu)
 {
 	pkvm_hypercall(enable_nmi_window);
@@ -816,12 +839,15 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 
 	.set_interrupt_shadow = pkvm_set_interrupt_shadow,
 	.get_interrupt_shadow = pkvm_get_interrupt_shadow,
+	.interrupt_allowed = pkvm_interrupt_allowed,
+	.nmi_allowed = pkvm_nmi_allowed,
+	.get_nmi_mask = pkvm_get_nmi_mask,
+	.set_nmi_mask = pkvm_set_nmi_mask,
 	.enable_nmi_window = pkvm_enable_nmi_window,
 	.enable_irq_window = pkvm_enable_irq_window,
 };
 
 bool pkvm_interrupt_blocked(struct kvm_vcpu *vcpu)
 {
-	/* TODO: Check the interrupt state with the pKVM hypervisor. */
-	return false;
+	return (pkvm_interrupt_allowed(vcpu, false) <= 0);
 }

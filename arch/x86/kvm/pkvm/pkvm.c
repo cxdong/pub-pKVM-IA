@@ -998,6 +998,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 		pkvm_load_eoi_exitmap(vcpu, pkvm_hc_input1(hvcpu), pkvm_hc_input2(hvcpu),
 				      pkvm_hc_input3(hvcpu), pkvm_hc_input4(hvcpu));
 		break;
+	case __pkvm__hwapic_isr_update:
+		kvm_x86_call(hwapic_isr_update)(vcpu, pkvm_hc_input1(hvcpu));
+		break;
 	default:
 		ret = -EINVAL;
 		break;

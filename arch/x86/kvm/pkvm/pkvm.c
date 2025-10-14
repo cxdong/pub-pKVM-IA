@@ -568,6 +568,7 @@ static bool is_guest_vcpu_accessible(struct kvm_vcpu *vcpu, enum pkvm_hc hc)
 
 	switch (hc) {
 	case __pkvm__update_exception_bitmap:
+	case __pkvm__set_efer:
 		/*
 		 * As the host needs to pre-configure the pVM's vCPU state for
 		 * booting, the protection for pVM is only enforced by the pKVM
@@ -612,6 +613,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 	switch (hc) {
 	case __pkvm__update_exception_bitmap:
 		pkvm_update_exception_bitmap(vcpu);
+		break;
+	case __pkvm__set_efer:
+		ret = kvm_x86_call(set_efer)(vcpu, pkvm_hc_input1(hvcpu));
 		break;
 	default:
 		ret = -EINVAL;

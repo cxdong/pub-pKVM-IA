@@ -238,6 +238,52 @@ static void pkvm_vcpu_free(struct kvm_vcpu *vcpu)
 	pkvm_free_loaded_vmcs(vmx->loaded_vmcs);
 }
 
+static void pkvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
+{
+	struct vcpu_vmx *vmx = to_vmx(vcpu);
+
+	if (!pkvm_is_protected_vcpu(vcpu) && init_event)
+		pkvm_hypercall(vcpu_reset);
+
+	/*
+	 * The host response to inject interrupts to the guest. The pi_desc is
+	 * the key structure for the host to inject interrupts via the posted
+	 * interrupt mechanism. Its physical address is used for the
+	 * POSTED_INTR_DESC_ADDR in the VMCS by the pKVM hypervisor. Initialize
+	 * the pi_desc when reset vcpu.
+	 */
+	vmx->vt.pi_desc.nv = POSTED_INTR_VECTOR;
+	__pi_set_sn(&vmx->vt.pi_desc);
+
+	/*
+	 * The CR0/CR4 guest-owned/rsvd bits are controlled by the pkvm
+	 * hypervisor. The host VMM can assume all the bits in CR0/CR4 are owned
+	 * by the guest.
+	 */
+	vcpu->arch.cr0_guest_owned_bits = ~0;
+	vcpu->arch.cr4_guest_owned_bits = ~0;
+	vcpu->arch.cr4_guest_rsvd_bits = 0;
+
+	kvm_set_cr8(vcpu, 0);
+	kvm_make_request(KVM_REQ_APIC_PAGE_RELOAD, vcpu);
+
+	if (pkvm_is_protected_vcpu(vcpu)) {
+		/*
+		 * Emulating xapic mode will require the host to decode MMIO
+		 * instruction which is not supported if the gust is a pVM as
+		 * the pVM's CPU and memory state will be isolated. To avoid
+		 * using xapic mode for a pVM, enable x2apic mode by default so
+		 * that pVM will use MSR instructions to access lapic, which
+		 * doesn't require decoding.
+		 */
+		u64 data = APIC_DEFAULT_PHYS_BASE | LAPIC_MODE_X2APIC |
+			   (kvm_vcpu_is_reset_bsp(vcpu) ? MSR_IA32_APICBASE_BSP : 0);
+
+		guest_cpu_cap_set(vcpu, X86_FEATURE_X2APIC);
+		kvm_apic_set_base(vcpu, data, true);
+	}
+}
+
 static void pkvm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -450,6 +496,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.vcpu_precreate = vmx_vcpu_precreate,
 	.vcpu_create = pkvm_vcpu_create,
 	.vcpu_free = pkvm_vcpu_free,
+	.vcpu_reset = pkvm_vcpu_reset,
 
 	.vcpu_load = pkvm_vcpu_load,
 	.vcpu_put = pkvm_vcpu_put,

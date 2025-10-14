@@ -307,6 +307,12 @@ static int pkvm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 	return -EPERM;
 }
 
+static void pkvm_post_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
+{
+	if (!vcpu->arch.guest_state_protected)
+		pkvm_hypercall(post_set_cr3, cr3);
+}
+
 static bool pkvm_is_valid_cr4(struct kvm_vcpu *vcpu, unsigned long cr4)
 {
 	/* The pKVM doesn't support VMX feature. */
@@ -401,6 +407,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.get_feature_msr = pkvm_get_feature_msr,
 	.get_msr = pkvm_get_msr,
 	.set_msr = pkvm_set_msr,
+	.post_set_cr3 = pkvm_post_set_cr3,
 	.is_valid_cr4 = pkvm_is_valid_cr4,
 	.set_cr4 = pkvm_set_cr4,
 	.set_efer = pkvm_set_efer,

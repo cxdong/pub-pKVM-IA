@@ -554,6 +554,56 @@ static int pkvm_set_efer(struct kvm_vcpu *vcpu, u64 efer)
 	return ret;
 }
 
+static void pkvm_get_idt(struct kvm_vcpu *vcpu, struct desc_ptr *dt)
+{
+	union pkvm_hc_data data;
+
+	if (vcpu->arch.guest_state_protected)
+		return;
+
+	pkvm_hypercall_out(get_idt, &data);
+	*dt = data.get_idt.desc;
+}
+
+static void pkvm_set_idt(struct kvm_vcpu *vcpu, struct desc_ptr *dt)
+{
+	union pkvm_hc_data data = {
+		.set_gdt.desc = *dt,
+	};
+
+	if (vcpu->arch.guest_state_protected) {
+		memset(dt, 0, sizeof(*dt));
+		return;
+	}
+
+	pkvm_hypercall_in(set_idt, &data);
+}
+
+static void pkvm_get_gdt(struct kvm_vcpu *vcpu, struct desc_ptr *dt)
+{
+	union pkvm_hc_data data;
+
+	if (vcpu->arch.guest_state_protected)
+		return;
+
+	pkvm_hypercall_out(get_gdt, &data);
+	*dt = data.get_gdt.desc;
+}
+
+static void pkvm_set_gdt(struct kvm_vcpu *vcpu, struct desc_ptr *dt)
+{
+	union pkvm_hc_data data = {
+		.set_gdt.desc = *dt,
+	};
+
+	if (vcpu->arch.guest_state_protected) {
+		memset(dt, 0, sizeof(*dt));
+		return;
+	}
+
+	pkvm_hypercall_in(set_gdt, &data);
+}
+
 static void pkvm_set_dr7(struct kvm_vcpu *vcpu, unsigned long val)
 {
 	if (!vcpu->arch.guest_state_protected)
@@ -673,6 +723,10 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.is_valid_cr4 = pkvm_is_valid_cr4,
 	.set_cr4 = pkvm_set_cr4,
 	.set_efer = pkvm_set_efer,
+	.get_idt = pkvm_get_idt,
+	.set_idt = pkvm_set_idt,
+	.get_gdt = pkvm_get_gdt,
+	.set_gdt = pkvm_set_gdt,
 	.set_dr7 = pkvm_set_dr7,
 	.cache_reg = pkvm_cache_reg,
 	.get_rflags = pkvm_get_rflags,

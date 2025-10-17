@@ -635,6 +635,13 @@ static bool is_guest_vcpu_accessible(struct kvm_vcpu *vcpu, enum pkvm_hc hc)
 		 * As the host needs to pre-configure the pVM's vCPU state for
 		 * booting, the protection for pVM is only enforced by the pKVM
 		 * hypervisor once the vCPU has started running.
+		 *
+		 * TODO: As the pVM can use another secure time source, the
+		 * guest TSC is allowed for the host to emulate and access. To
+		 * support the pVM with secure TSC, add protection for TSC
+		 * related PV interfaces.
+		 *	__pkvm__write_tsc_offset
+		 *	__pkvm__write_tsc_multiplier
 		 */
 		return !kvm_vcpu_has_run(vcpu);
 	default:
@@ -973,6 +980,23 @@ static int pkvm_vcpu_add_fpstate(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
+static void pkvm_write_tsc_offset(struct kvm_vcpu *vcpu, u64 tsc_offset)
+{
+	vcpu->arch.l1_tsc_offset = tsc_offset;
+	vcpu->arch.tsc_offset = tsc_offset;
+	kvm_x86_call(write_tsc_offset)(vcpu);
+}
+
+static void pkvm_write_tsc_multiplier(struct kvm_vcpu *vcpu, u64 ratio)
+{
+	if (!kvm_caps.has_tsc_control)
+		return;
+
+	vcpu->arch.l1_tsc_scaling_ratio = ratio;
+	vcpu->arch.tsc_scaling_ratio = ratio;
+	kvm_x86_call(write_tsc_multiplier)(vcpu);
+}
+
 static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc hc,
 					   union pkvm_hc_data *in, union pkvm_hc_data *out)
 {
@@ -1131,6 +1155,12 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 	case __pkvm__vcpu_add_fpstate:
 		ret = pkvm_vcpu_add_fpstate(vcpu, pkvm_host_gpa_to_phys(pkvm_hc_input1(hvcpu)),
 					    pkvm_hc_input2(hvcpu), &out->vcpu_add_fpstate.memcache);
+		break;
+	case __pkvm__write_tsc_offset:
+		pkvm_write_tsc_offset(vcpu, pkvm_hc_input1(hvcpu));
+		break;
+	case __pkvm__write_tsc_multiplier:
+		pkvm_write_tsc_multiplier(vcpu, pkvm_hc_input1(hvcpu));
 		break;
 	default:
 		ret = -EINVAL;

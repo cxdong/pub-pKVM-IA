@@ -147,9 +147,9 @@ static int __set_sregs2(struct kvm_vcpu *vcpu, struct kvm_sregs2 *sregs2);
 static void __get_sregs2(struct kvm_vcpu *vcpu, struct kvm_sregs2 *sregs2);
 
 static DEFINE_MUTEX(vendor_module_lock);
+#endif /* !__PKVM_HYP__ */
 static void kvm_load_guest_fpu(struct kvm_vcpu *vcpu);
 static void kvm_put_guest_fpu(struct kvm_vcpu *vcpu);
-#endif /* !__PKVM_HYP__ */
 struct kvm_x86_ops kvm_x86_ops __read_mostly;
 
 #ifndef __PKVM_HYP__
@@ -1287,7 +1287,6 @@ static inline u64 kvm_guest_supported_xfd(struct kvm_vcpu *vcpu)
 }
 #endif
 
-#ifndef __PKVM_HYP__
 int __kvm_set_xcr(struct kvm_vcpu *vcpu, u32 index, u64 xcr)
 {
 	u64 xcr0 = xcr;
@@ -1334,6 +1333,7 @@ int __kvm_set_xcr(struct kvm_vcpu *vcpu, u32 index, u64 xcr)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(__kvm_set_xcr);
 
+#ifndef __PKVM_HYP__
 int kvm_emulate_xsetbv(struct kvm_vcpu *vcpu)
 {
 	/* Note, #UD due to CR4.OSXSAVE=0 has priority over the intercept. */
@@ -1541,6 +1541,7 @@ unsigned long kvm_get_cr8(struct kvm_vcpu *vcpu)
 		return vcpu->arch.cr8;
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_get_cr8);
+#endif /* !__PKVM_HYP__ */
 
 static void kvm_update_dr0123(struct kvm_vcpu *vcpu)
 {
@@ -1567,6 +1568,7 @@ void kvm_update_dr7(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_update_dr7);
 
+#ifndef __PKVM_HYP__
 static u64 kvm_dr6_fixed(struct kvm_vcpu *vcpu)
 {
 	u64 fixed = DR6_FIXED_1;
@@ -8652,12 +8654,14 @@ static int emulator_pio_out_emulated(struct x86_emulate_ctxt *ctxt,
 {
 	return emulator_pio_out(emul_to_vcpu(ctxt), size, port, val, count);
 }
+#endif /* !__PKVM_HYP__ */
 
 static unsigned long get_segment_base(struct kvm_vcpu *vcpu, int seg)
 {
 	return kvm_x86_call(get_segment_base)(vcpu, seg);
 }
 
+#ifndef __PKVM_HYP__
 static void emulator_invlpg(struct x86_emulate_ctxt *ctxt, ulong address)
 {
 	kvm_mmu_invlpg(emul_to_vcpu(ctxt), address);
@@ -11971,6 +11975,7 @@ static int complete_emulated_mmio(struct kvm_vcpu *vcpu)
 	vcpu->arch.complete_userspace_io = complete_emulated_mmio;
 	return 0;
 }
+#endif /* !__PKVM_HYP__ */
 
 /* Swap (qemu) user FPU context for the guest FPU context. */
 static void kvm_load_guest_fpu(struct kvm_vcpu *vcpu)
@@ -11994,6 +11999,7 @@ static void kvm_put_guest_fpu(struct kvm_vcpu *vcpu)
 	trace_kvm_fpu(0);
 }
 
+#ifndef __PKVM_HYP__
 static int kvm_x86_vcpu_pre_run(struct kvm_vcpu *vcpu)
 {
 	/*
@@ -12949,6 +12955,7 @@ void kvm_arch_vcpu_destroy(struct kvm_vcpu *vcpu)
 	free_page((unsigned long)vcpu->arch.pio_data);
 	kvfree(vcpu->arch.cpuid_entries);
 }
+#endif /* !__PKVM_HYP__ */
 
 static void kvm_xstate_reset(struct kvm_vcpu *vcpu, bool init_event)
 {
@@ -12963,6 +12970,15 @@ static void kvm_xstate_reset(struct kvm_vcpu *vcpu, bool init_event)
 	 */
 	if (!init_event || !fpstate)
 		return;
+
+#ifdef __PKVM_HYP__
+	/*
+	 * The npVM's FPU state is managed by the host thus it is not necessary
+	 * to reset by the pKVM hypervisor.
+	 */
+	if (!pkvm_is_protected_vcpu(vcpu))
+		return;
+#endif
 
 	/*
 	 * On INIT, only select XSTATE components are zeroed, most components
@@ -13022,7 +13038,10 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	if (is_guest_mode(vcpu))
 		kvm_leave_nested(vcpu);
 
+	/* The virtual APIC is emulated by the host rather than the pKVM. */
+#ifndef __PKVM_HYP__
 	kvm_lapic_reset(vcpu, init_event);
+#endif
 
 	WARN_ON_ONCE(is_guest_mode(vcpu) || is_smm(vcpu));
 	vcpu->arch.hflags = 0;
@@ -13048,11 +13067,17 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	vcpu->arch.apf.msr_int_val = 0;
 	vcpu->arch.st.msr_val = 0;
 
+	/*
+	 * For the pKVM hypervisor, the kvmclock/async_pf is emulated by the
+	 * host.
+	 */
+#ifndef __PKVM_HYP__
 	kvmclock_reset(vcpu);
 
 	kvm_clear_async_pf_completion_queue(vcpu);
 	kvm_async_pf_hash_reset(vcpu);
 	vcpu->arch.apf.halted = false;
+#endif
 
 	kvm_xstate_reset(vcpu, init_event);
 
@@ -13117,7 +13142,10 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	 */
 	if (old_cr0 & X86_CR0_PG) {
 		kvm_make_request(KVM_REQ_TLB_FLUSH_GUEST, vcpu);
+		/* The host will reset kvm mmu context. */
+#ifndef __PKVM_HYP__
 		kvm_mmu_reset_context(vcpu);
+#endif
 	}
 
 	/*
@@ -13134,6 +13162,7 @@ void kvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_vcpu_reset);
 
+#ifndef __PKVM_HYP__
 void kvm_vcpu_deliver_sipi_vector(struct kvm_vcpu *vcpu, u8 vector)
 {
 	struct kvm_segment cs;
@@ -13822,6 +13851,7 @@ int kvm_arch_interrupt_allowed(struct kvm_vcpu *vcpu)
 {
 	return kvm_x86_call(interrupt_allowed)(vcpu, false);
 }
+#endif /* !__PKVM_HYP__ */
 
 unsigned long kvm_get_linear_rip(struct kvm_vcpu *vcpu)
 {
@@ -13868,6 +13898,7 @@ void kvm_set_rflags(struct kvm_vcpu *vcpu, unsigned long rflags)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_set_rflags);
 
+#ifndef __PKVM_HYP__
 static inline u32 kvm_async_pf_hash_fn(gfn_t gfn)
 {
 	BUILD_BUG_ON(!is_power_of_2(ASYNC_PF_PER_VCPU));

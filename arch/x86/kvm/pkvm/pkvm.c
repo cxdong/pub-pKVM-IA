@@ -110,6 +110,7 @@ static struct pkvm_vm *free_pkvm_vm_handle(int handle)
 
 	pkvm_spin_lock(&pkvm_vms_lock);
 
+	idx = array_index_nospec(idx, MAX_PKVM_VMS);
 	pkvm_vm_ref = &pkvm_vms_ref[idx];
 	if ((atomic_cmpxchg(&pkvm_vm_ref->refcount, 1, 0) != 1)) {
 		pkvm_err("VM%d is busy, refcount %d\n", handle,
@@ -177,6 +178,46 @@ unshare:
 	return ret;
 }
 
+static void push_mem_to_memcache(struct pkvm_memcache *mc, void *addr, size_t size)
+{
+	/*
+	 * The pKVM hypervisor will push the memory range [addr, addr + size)
+	 * to the memcache and eventually donate to the host. The memory range
+	 * should be PAGE_SIZE aligned. If not, it must be a code bug.
+	 */
+	BUG_ON(!PAGE_ALIGNED(addr) || !PAGE_ALIGNED(size));
+
+	pkvm_clear_memory(addr, size);
+
+	push_pkvm_memcache(mc, addr, size, pkvm_virt_to_host_gpa);
+}
+
+static void donate_mem_in_memcache(struct pkvm_memcache *mc)
+{
+	struct pkvm_mem_range *range;
+	int i;
+
+	for_each_pkvm_mem_range(i, range, mc, pkvm_host_gpa_to_virt)
+		pkvm_hyp_donate_host(pkvm_host_gpa_to_phys(range->addr),
+				     range->size, false);
+}
+
+static void pkvm_vm_destroy(int vm_handle, struct pkvm_memcache *mc)
+{
+	struct pkvm_vm *pkvm_vm = free_pkvm_vm_handle(vm_handle);
+
+	if (!pkvm_vm)
+		return;
+
+	kvm_x86_call(vm_destroy)(&pkvm_vm->kvm);
+
+	pkvm_host_unshare_hyp(__pkvm_pa(pkvm_vm->shared_kvm), kvm_x86_call(vm_size));
+
+	push_mem_to_memcache(mc, (void *)pkvm_vm, pkvm_vm->size);
+
+	donate_mem_in_memcache(mc);
+}
+
 int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,
 			 union pkvm_fn_data *out)
 {
@@ -199,6 +240,9 @@ int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,
 	case __pkvm__vm_init:
 		ret = pkvm_vm_init(pkvm_host_gpa_to_phys(in->val1),
 				   pkvm_host_gpa_to_phys(in->val2));
+		break;
+	case __pkvm__vm_destroy:
+		pkvm_vm_destroy(in->vm_handle, &out->memcache);
 		break;
 	default:
 		ret = -EINVAL;

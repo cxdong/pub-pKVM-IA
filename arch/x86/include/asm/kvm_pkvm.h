@@ -59,11 +59,14 @@ enum pkvm_fn {
 
 	/* Below PV interfaces should use kvm_call_pkvm_inout */
 	PKVM_FIRST_INOUT_PV_INTERFACE,
+	__pkvm__vm_destroy = PKVM_FIRST_INOUT_PV_INTERFACE,
 };
 
 #define PKVM_FN_DATA_LEN		4
 
 union pkvm_fn_data {
+	struct pkvm_memcache memcache;
+	int vm_handle;
 	struct {
 		u64 val1;
 		u64 val2;

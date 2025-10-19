@@ -1332,6 +1332,9 @@ struct pkvm_memcache {
 	unsigned long count;
 };
 
+#define for_each_pkvm_mem_range(i, r, mc, to_va)	\
+	for (i = 0, (r) = &(mc)->mem_range; i < (mc)->count; i++, (r) = to_va((r)->addr))
+
 static inline void push_pkvm_memcache(struct pkvm_memcache *mc,
 				      void *addr, size_t size,
 				      phys_addr_t (*to_pa)(void *virt))

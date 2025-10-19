@@ -56,6 +56,7 @@ enum pkvm_fn {
 	__pkvm__enable_virtualization_cpu,
 	__pkvm__disable_virtualization_cpu,
 	__pkvm__vm_init,
+	__pkvm__vcpu_create,
 
 	/* Below PV interfaces should use kvm_call_pkvm_inout */
 	PKVM_FIRST_INOUT_PV_INTERFACE,
@@ -260,6 +261,26 @@ static inline bool pkvm_is_protected_vm(struct kvm *kvm)
 static inline bool pkvm_is_protected_vcpu(struct kvm_vcpu *vcpu)
 {
 	return pkvm_is_protected_vm(vcpu->kvm);
+}
+
+static inline size_t pkvm_guest_initial_fpstate_size(struct kvm *kvm)
+{
+	/*
+	 * The pkvm hypervisor requires to have at least the size of struct
+	 * fpstate for both pVM (to switch FPU and emulate XFD MSR) and npVM
+	 * (to emulate XFD MSR only).
+	 */
+	size_t size = ALIGN(offsetof(struct fpstate, regs), 64);
+
+	/*
+	 * The pkvm hypervisor switches the FPU registers for pVM thus the size
+	 * should be extended with fpu_user_cfg.default_size to satisfy the
+	 * default features (w/o dynamic features).
+	 */
+	if (pkvm_is_protected_vm(kvm))
+		size += fpu_user_cfg.default_size;
+
+	return PAGE_ALIGN(size);
 }
 
 #else /* !CONFIG_PKVM_X86 */

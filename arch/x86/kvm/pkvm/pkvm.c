@@ -3,6 +3,7 @@
 #include <linux/kvm_host.h>
 #include <asm/fpu/xcr.h>
 #include <asm/pkvm_spinlock.h>
+#include <lapic.h>
 #include "init_finalize.h"
 #include "mem_protect.h"
 #include "memory.h"
@@ -163,6 +164,7 @@ static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
 
 	pkvm_vm->size = size;
 	pkvm_vm->shared_kvm = shared_kvm;
+	pkvm_vm->lock = __PKVM_SPINLOCK_UNLOCKED;
 	pkvm_vm->kvm.arch.vm_type = vm_type;
 
 	ret = allocate_pkvm_vm_handle(pkvm_vm);
@@ -226,6 +228,166 @@ static void pkvm_vm_destroy(int vm_handle, struct pkvm_memcache *mc)
 	donate_mem_in_memcache(mc);
 }
 
+static int attach_pkvm_vcpu_to_vm(struct pkvm_vm *pkvm_vm, struct pkvm_vcpu *pkvm_vcpu)
+{
+	struct kvm *kvm = &pkvm_vm->kvm;
+	int vcpu_handle;
+
+	pkvm_spin_lock(&pkvm_vm->lock);
+
+	if (kvm->created_vcpus == KVM_MAX_VCPUS) {
+		pkvm_spin_unlock(&pkvm_vm->lock);
+		return -EINVAL;
+	}
+	vcpu_handle = kvm->created_vcpus++;
+	pkvm_vcpu->vcpu.arch.pkvm_vcpu_handle = vcpu_handle;
+	pkvm_vm->vcpus[vcpu_handle] = pkvm_vcpu;
+
+	pkvm_spin_unlock(&pkvm_vm->lock);
+
+	atomic_set(&pkvm_vm->vcpu_refs[vcpu_handle], 1);
+
+	return vcpu_handle;
+}
+
+static int pkvm_arch_vcpu_create(struct pkvm_vcpu *pkvm_vcpu, struct fpstate *fps)
+{
+	struct kvm_vcpu *vcpu = &pkvm_vcpu->vcpu;
+
+	vcpu->kvm = &pkvm_vcpu->pkvm_vm->kvm;
+	/* Set cpu to -1 to indicate it is not loaded on any CPU */
+	vcpu->cpu = -1;
+	vcpu->vcpu_id = pkvm_vcpu->shared_vcpu->vcpu_id;
+
+	vcpu->arch.apic_base = pkvm_vcpu->shared_vcpu->arch.apic_base;
+
+	vcpu->arch.last_vmentry_cpu = -1;
+	vcpu->arch.regs_avail = ~0;
+	vcpu->arch.regs_dirty = ~0;
+	vcpu->arch.pat = MSR_IA32_CR_PAT_DEFAULT;
+
+	vcpu->arch.mce_banks = (void *)pkvm_vcpu + PKVM_VCPU_BASE_SIZE + kvm_vcpu_sz;
+	vcpu->arch.mci_ctl2_banks = (void *)vcpu->arch.mce_banks +
+				    KVM_MCE_SIZE;
+	vcpu->arch.mcg_cap = KVM_MAX_MCE_BANKS;
+
+	vcpu->arch.guest_fpu.fpstate = fps;
+
+	return kvm_x86_call(vcpu_create)(vcpu);
+}
+
+static void pkvm_unshare_vcpu(struct pkvm_vcpu *pkvm_vcpu)
+{
+	void *apic_regs = kern_pkvm_va(pkvm_vcpu->vcpu.arch.apic->regs);
+
+	pkvm_host_unshare_hyp(__pkvm_pa(pkvm_vcpu->shared_vcpu), kvm_vcpu_sz);
+	pkvm_host_unshare_hyp(__pkvm_pa(pkvm_vcpu->vcpu.arch.apic),
+			     sizeof(struct kvm_lapic));
+	if (apic_regs)
+		pkvm_host_unshare_hyp(__pkvm_pa(apic_regs), PAGE_SIZE);
+}
+
+static int pkvm_share_vcpu(struct pkvm_vcpu *pkvm_vcpu)
+{
+	struct kvm_vcpu *shared_vcpu = pkvm_vcpu->shared_vcpu;
+	struct kvm_lapic *apic;
+	void *apic_regs;
+	int ret;
+
+	apic = kern_pkvm_va(shared_vcpu->arch.apic);
+	if (!apic)
+		return -EINVAL;
+
+	apic_regs = kern_pkvm_va(apic->regs);
+	if (!apic_regs)
+		return -EINVAL;
+
+	ret = pkvm_host_share_hyp(__pkvm_pa(shared_vcpu), kvm_vcpu_sz);
+	if (ret)
+		return ret;
+
+	ret = pkvm_host_share_hyp(__pkvm_pa(apic), sizeof(struct kvm_lapic));
+	if (ret)
+		goto unshare_vcpu;
+
+	ret = pkvm_host_share_hyp(__pkvm_pa(apic_regs), PAGE_SIZE);
+	if (ret)
+		goto unshare_apic;
+
+	pkvm_vcpu->vcpu.arch.apic = apic;
+
+	return 0;
+
+unshare_apic:
+	pkvm_host_unshare_hyp(__pkvm_pa(apic), sizeof(struct kvm_lapic));
+unshare_vcpu:
+	pkvm_host_unshare_hyp(__pkvm_pa(shared_vcpu), kvm_vcpu_sz);
+	return ret;
+}
+
+static int pkvm_vcpu_create(int vm_handle, phys_addr_t host_vcpu_pa,
+			    phys_addr_t pkvm_vcpu_pa, phys_addr_t fpu_pa)
+{
+	struct pkvm_vcpu *pkvm_vcpu;
+	size_t vcpu_size, fps_size;
+	struct pkvm_vm *pkvm_vm;
+	struct fpstate *fps;
+	int ret;
+
+	pkvm_vm = pkvm_get_vm(vm_handle);
+	if (!pkvm_vm)
+		return -EINVAL;
+
+	vcpu_size = PAGE_ALIGN(PKVM_VCPU_BASE_SIZE +
+			       kvm_vcpu_sz +
+			       KVM_MCE_SIZE +
+			       KVM_MCI_CTL2_SIZE);
+	pkvm_vcpu = donate_host_memory(pkvm_vcpu_pa, vcpu_size, true);
+	if (!pkvm_vcpu) {
+		ret = -EINVAL;
+		goto put_vm;
+	}
+	pkvm_vcpu->size = vcpu_size;
+
+	fps_size = pkvm_guest_initial_fpstate_size(&pkvm_vm->kvm);
+	fps = donate_host_memory(fpu_pa, fps_size, true);
+	if (!fps) {
+		ret = -EINVAL;
+		goto undonate_vcpu;
+	}
+	fps->size = fps_size;
+
+	pkvm_vcpu->shared_vcpu = __pkvm_va(host_vcpu_pa);
+	ret = pkvm_share_vcpu(pkvm_vcpu);
+	if (ret)
+		goto undonate_fps;
+
+	pkvm_vcpu->pkvm_vm = pkvm_vm;
+	ret = pkvm_arch_vcpu_create(pkvm_vcpu, fps);
+	if (ret)
+		goto unshare;
+
+	ret = attach_pkvm_vcpu_to_vm(pkvm_vm, pkvm_vcpu);
+	if (ret < 0)
+		goto destroy_vcpu;
+
+	pkvm_put_vm(pkvm_vm);
+
+	return pkvm_vcpu->vcpu.arch.pkvm_vcpu_handle;
+
+destroy_vcpu:
+	kvm_x86_call(vcpu_free)(&pkvm_vcpu->vcpu);
+unshare:
+	pkvm_unshare_vcpu(pkvm_vcpu);
+undonate_fps:
+	pkvm_hyp_donate_host(__pkvm_pa(fps), fps_size, false);
+undonate_vcpu:
+	pkvm_hyp_donate_host(__pkvm_pa(pkvm_vcpu), vcpu_size, false);
+put_vm:
+	pkvm_put_vm(pkvm_vm);
+	return ret;
+}
+
 int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,
 			 union pkvm_fn_data *out)
 {
@@ -251,6 +413,11 @@ int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,
 		break;
 	case __pkvm__vm_destroy:
 		pkvm_vm_destroy(in->vm_handle, &out->memcache);
+		break;
+	case __pkvm__vcpu_create:
+		ret = pkvm_vcpu_create(in->val1, pkvm_host_gpa_to_phys(in->val2),
+				       pkvm_host_gpa_to_phys(in->val3),
+				       pkvm_host_gpa_to_phys(in->val4));
 		break;
 	default:
 		ret = -EINVAL;

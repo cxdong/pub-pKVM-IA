@@ -4,6 +4,7 @@
 
 #include <linux/kvm_host.h>
 #include <asm/kvm_pkvm.h>
+#include <asm/pkvm_spinlock.h>
 
 DECLARE_PER_CPU(struct pkvm_pcpu *, phys_cpu);
 DECLARE_PER_CPU(struct kvm_vcpu *, host_vcpu);
@@ -40,6 +41,9 @@ struct pkvm_vm {
 	struct kvm *shared_kvm;
 	/* Structure size */
 	size_t size;
+	pkvm_spinlock_t lock;
+	struct pkvm_vcpu *vcpus[KVM_MAX_VCPUS];
+	atomic_t vcpu_refs[KVM_MAX_VCPUS];
 	/*
 	 * The struct kvm should be the last element. In cases where struct kvm
 	 * is wrapped by a vendor specific structure, putting it as the last

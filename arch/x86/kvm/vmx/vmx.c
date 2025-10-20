@@ -7330,6 +7330,7 @@ void noinstr vmx_update_host_rsp(struct vcpu_vmx *vmx, unsigned long host_rsp)
 		vmcs_writel(HOST_RSP, host_rsp);
 	}
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 void noinstr vmx_spec_ctrl_restore_host(struct vcpu_vmx *vmx,
 					unsigned int flags)
@@ -7356,6 +7357,7 @@ void noinstr vmx_spec_ctrl_restore_host(struct vcpu_vmx *vmx,
 	barrier_nospec();
 }
 
+#ifndef __PKVM_HYP__
 static fastpath_t vmx_exit_handlers_fastpath(struct kvm_vcpu *vcpu,
 					     bool force_immediate_exit)
 {

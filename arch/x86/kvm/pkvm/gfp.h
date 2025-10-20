@@ -7,7 +7,7 @@
 #include <asm/pkvm_spinlock.h>
 #include "memory.h"
 
-#define PKVM_NO_ORDER	USHRT_MAX
+#define PKVM_NO_ORDER  ((u8)(~0))
 
 struct pkvm_pool {
 	/*

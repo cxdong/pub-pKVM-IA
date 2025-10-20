@@ -12,7 +12,7 @@
 
 struct pkvm_page {
 	unsigned short refcount;
-	unsigned short order;
+	u8 order;
 };
 
 extern u64 __pkvm_vmemmap;

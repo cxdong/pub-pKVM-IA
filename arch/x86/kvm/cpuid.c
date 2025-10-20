@@ -658,6 +658,7 @@ int kvm_vcpu_ioctl_get_cpuid2(struct kvm_vcpu *vcpu,
 	cpuid->nent = vcpu->arch.cpuid_nent;
 	return 0;
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 static __always_inline u32 raw_cpuid_get(struct cpuid_reg cpuid)
 {
@@ -1235,6 +1236,7 @@ EXPORT_SYMBOL_GPL(kvm_set_cpu_caps);
 #undef VENDOR_F
 #undef RUNTIME_F
 
+#ifndef __PKVM_HYP__
 struct kvm_cpuid_array {
 	struct kvm_cpuid_entry2 *entries;
 	int maxnent;

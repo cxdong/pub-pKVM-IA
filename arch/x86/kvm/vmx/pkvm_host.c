@@ -5,6 +5,7 @@
 #include <asm/kvm_pkvm.h>
 #include "pkvm_constants.h"
 #include "posted_intr.h"
+#include "trace.h"
 #include "x86_ops.h"
 #include "vmx.h"
 
@@ -750,6 +751,31 @@ static u32 pkvm_get_interrupt_shadow(struct kvm_vcpu *vcpu)
 	return out.get_interrupt_shadow.data;
 }
 
+static void pkvm_inject_irq(struct kvm_vcpu *vcpu, bool reinjected)
+{
+	trace_kvm_inj_virq(vcpu->arch.interrupt.nr,
+			   vcpu->arch.interrupt.soft, reinjected);
+
+	++vcpu->stat.irq_injections;
+
+	pkvm_hypercall(inject_irq);
+}
+
+static void pkvm_inject_nmi(struct kvm_vcpu *vcpu)
+{
+	++vcpu->stat.nmi_injections;
+
+	pkvm_hypercall(inject_nmi);
+}
+
+static void pkvm_inject_exception(struct kvm_vcpu *vcpu)
+{
+	if (WARN_ON_ONCE(pkvm_is_protected_vcpu(vcpu)))
+		return;
+
+	pkvm_hypercall(inject_exception);
+}
+
 static int pkvm_interrupt_allowed(struct kvm_vcpu *vcpu, bool for_injection)
 {
 	return pkvm_hypercall(interrupt_allowed, for_injection);
@@ -839,6 +865,9 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 
 	.set_interrupt_shadow = pkvm_set_interrupt_shadow,
 	.get_interrupt_shadow = pkvm_get_interrupt_shadow,
+	.inject_irq = pkvm_inject_irq,
+	.inject_nmi = pkvm_inject_nmi,
+	.inject_exception = pkvm_inject_exception,
 	.interrupt_allowed = pkvm_interrupt_allowed,
 	.nmi_allowed = pkvm_nmi_allowed,
 	.get_nmi_mask = pkvm_get_nmi_mask,

@@ -2,12 +2,14 @@
 #include <linux/types.h>
 #include <linux/kvm_host.h>
 #include <asm/fpu/xcr.h>
+#include <asm/pkvm_spinlock.h>
 #include "init_finalize.h"
 #include "mem_protect.h"
 #include "memory.h"
 #include "pkvm/lapic.h"
 #include "pkvm.h"
 #include "x86.h"
+#include "debug.h"
 
 /*
  * Needed by kvm_spurious_fault() which is a generic fault function for the
@@ -26,6 +28,18 @@ bool tdp_enabled = true;
 struct pkvm_hyp *pkvm_hyp;
 DEFINE_PER_CPU(struct pkvm_pcpu *, phys_cpu);
 DEFINE_PER_CPU(struct kvm_vcpu *, host_vcpu);
+
+/* The maximum number of VMs under pkvm. */
+#define MAX_PKVM_VMS				64
+
+static DECLARE_BITMAP(pkvm_vms_bitmap, MAX_PKVM_VMS);
+static pkvm_spinlock_t pkvm_vms_lock = __PKVM_SPINLOCK_UNLOCKED;
+static struct pkvm_vm_ref {
+	/* Reference counter to indicate if pkvm_vm is inuse */
+	atomic_t refcount;
+	/* Point to pkvm_vm in pkvm */
+	struct pkvm_vm *pkvm_vm;
+} pkvm_vms_ref[MAX_PKVM_VMS];
 
 static void *donate_host_memory(phys_addr_t phys, size_t size, bool clear)
 {
@@ -51,6 +65,65 @@ static int pkvm_enable_virtualization_cpu(void)
 static void pkvm_disable_virtualization_cpu(void)
 {
 	kvm_x86_call(disable_virtualization_cpu)();
+}
+
+static int allocate_pkvm_vm_handle(struct pkvm_vm *pkvm_vm)
+{
+	struct pkvm_vm_ref *pkvm_vm_ref;
+	int idx;
+
+	/*
+	 * The pkvm_vm_handle is an int so cannot exceed the INT_MAX.
+	 * Meanwhile pkvm_vm_handle will also be used as owner_id in
+	 * the page state machine so it also cannot exceed the max
+	 * owner_id.
+	 */
+	BUILD_BUG_ON(MAX_PKVM_VMS >
+		     min(INT_MAX, ((1 << PKVM_INVALID_PTE_OWNER_BITS) - 1)));
+
+	pkvm_spin_lock(&pkvm_vms_lock);
+
+	idx = find_next_zero_bit(pkvm_vms_bitmap, MAX_PKVM_VMS, 0);
+	if (idx == MAX_PKVM_VMS) {
+		pkvm_spin_unlock(&pkvm_vms_lock);
+		return -ENOMEM;
+	}
+	__set_bit(idx, pkvm_vms_bitmap);
+
+	pkvm_vm_ref = &pkvm_vms_ref[idx];
+	pkvm_vm_ref->pkvm_vm = pkvm_vm;
+	atomic_set(&pkvm_vm_ref->refcount, 1);
+
+	pkvm_spin_unlock(&pkvm_vms_lock);
+
+	return idx;
+}
+
+static struct pkvm_vm *free_pkvm_vm_handle(int handle)
+{
+	struct pkvm_vm_ref *pkvm_vm_ref;
+	struct pkvm_vm *pkvm_vm = NULL;
+	int idx = handle;
+
+	if (idx < 0 || idx >= MAX_PKVM_VMS)
+		return NULL;
+
+	pkvm_spin_lock(&pkvm_vms_lock);
+
+	pkvm_vm_ref = &pkvm_vms_ref[idx];
+	if ((atomic_cmpxchg(&pkvm_vm_ref->refcount, 1, 0) != 1)) {
+		pkvm_err("VM%d is busy, refcount %d\n", handle,
+			 atomic_read(&pkvm_vm_ref->refcount));
+		goto out;
+	}
+
+	pkvm_vm = pkvm_vm_ref->pkvm_vm;
+	pkvm_vm_ref->pkvm_vm = NULL;
+
+	__clear_bit(idx, pkvm_vms_bitmap);
+out:
+	pkvm_spin_unlock(&pkvm_vms_lock);
+	return pkvm_vm;
 }
 
 static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
@@ -83,12 +156,20 @@ static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
 	pkvm_vm->shared_kvm = shared_kvm;
 	pkvm_vm->kvm.arch.vm_type = vm_type;
 
-	ret = kvm_x86_call(vm_init)(&pkvm_vm->kvm);
-	if (ret)
+	ret = allocate_pkvm_vm_handle(pkvm_vm);
+	if (ret < 0)
 		goto undonate;
 
-	return 0;
+	pkvm_vm->kvm.arch.pkvm_vm_handle = ret;
 
+	ret = kvm_x86_call(vm_init)(&pkvm_vm->kvm);
+	if (ret)
+		goto free_handle;
+
+	return pkvm_vm->kvm.arch.pkvm_vm_handle;
+
+free_handle:
+	free_pkvm_vm_handle(pkvm_vm->kvm.arch.pkvm_vm_handle);
 undonate:
 	pkvm_hyp_donate_host(__pkvm_pa(pkvm_vm), size, false);
 unshare:

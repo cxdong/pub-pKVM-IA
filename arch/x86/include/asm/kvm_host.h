@@ -1570,6 +1570,8 @@ struct kvm_arch {
 	struct kvm_mmu_memory_cache split_desc_cache;
 
 	gfn_t gfn_direct_bits;
+
+	int pkvm_vm_handle;
 };
 
 struct kvm_vm_stat {

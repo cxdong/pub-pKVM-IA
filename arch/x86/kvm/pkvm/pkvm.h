@@ -7,6 +7,32 @@
 
 DECLARE_PER_CPU(struct pkvm_pcpu *, phys_cpu);
 DECLARE_PER_CPU(struct kvm_vcpu *, host_vcpu);
+extern size_t kvm_vcpu_sz;
+
+/* Represents a guest vCPU. */
+struct pkvm_vcpu {
+	/* Pointer to the shared structure kvm_vcpu in host */
+	struct kvm_vcpu *shared_vcpu;
+	/* The donated structure size */
+	size_t size;
+	/* Point to the pkvm_vm this pkvm_vcpu belongs to */
+	struct pkvm_vm *pkvm_vm;
+	/*
+	 * The struct kvm_vcpu should be the last element. In cases where struct
+	 * kvm_vcpu is wrapped by a vendor specific structure, putting it as the
+	 * last element can safely extend the size of pkvm_vcpu w/o affecting
+	 * layout compatibility.
+	 *
+	 * If struct kvm_vcpu is wrapped by a vendor specific structure, it must
+	 * reside at offset 0 of that structure. This ensures &pkvm_vcpu->vcpu
+	 * correctly resolves to the underlying struct kvm_vcpu instance. It is
+	 * the responsibility of vendor code to guarantee this layout.
+	 */
+	struct kvm_vcpu vcpu;
+};
+
+/* The pkvm_vcpu structure size w/o struct kvm_vcpu */
+#define PKVM_VCPU_BASE_SIZE		(offsetof(struct pkvm_vcpu, vcpu))
 
 /* Represents a guest VM. */
 struct pkvm_vm {
@@ -41,6 +67,18 @@ static inline struct pkvm_vm *to_pkvm(struct kvm *kvm)
 		     PKVM_VM_BASE_SIZE + sizeof(struct kvm));
 
 	return container_of(kvm, struct pkvm_vm, kvm);
+}
+
+static inline struct pkvm_vcpu *to_pkvm_vcpu(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * Compiling check to guarantee the kvm_vcpu structure is the last
+	 * element of pkvm_vcpu. See comments of struct pkvm_vcpu.
+	 */
+	BUILD_BUG_ON(sizeof(struct pkvm_vcpu) !=
+		     PKVM_VCPU_BASE_SIZE + sizeof(struct kvm_vcpu));
+
+	return container_of(vcpu, struct pkvm_vcpu, vcpu);
 }
 
 int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,

@@ -43,9 +43,8 @@ static inline struct pkvm_vm *to_pkvm(struct kvm *kvm)
 	return container_of(kvm, struct pkvm_vm, kvm);
 }
 
-int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
-			 unsigned long a1, unsigned long a2,
-			 unsigned long a3);
+int pkvm_handle_kvm_call(unsigned long func, union pkvm_fn_data *in,
+			 union pkvm_fn_data *out);
 void pkvm_kick_vcpu(struct kvm_vcpu *vcpu);
 int pkvm_x86_vendor_init(struct kvm_x86_init_ops *ops);
 

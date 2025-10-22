@@ -69,15 +69,24 @@ static void handle_cpuid(struct kvm_vcpu *vcpu)
 
 static void handle_vmcall(struct kvm_vcpu *vcpu)
 {
-	u64 func, a0, a1, a2, a3;
+	union pkvm_fn_data in, out = { 0 };
+	u64 func;
+	int ret;
 
 	func = vcpu->arch.regs[VCPU_REGS_RAX];
-	a0 = vcpu->arch.regs[VCPU_REGS_RBX];
-	a1 = vcpu->arch.regs[VCPU_REGS_RCX];
-	a2 = vcpu->arch.regs[VCPU_REGS_RDX];
-	a3 = vcpu->arch.regs[VCPU_REGS_RSI];
+	in.val1 = vcpu->arch.regs[VCPU_REGS_RBX];
+	in.val2 = vcpu->arch.regs[VCPU_REGS_RCX];
+	in.val3 = vcpu->arch.regs[VCPU_REGS_RDX];
+	in.val4 = vcpu->arch.regs[VCPU_REGS_RSI];
 
-	vcpu->arch.regs[VCPU_REGS_RAX] = pkvm_handle_kvm_call(func, a0, a1, a2, a3);
+	ret = pkvm_handle_kvm_call(func, &in, &out);
+	if (func >= PKVM_FIRST_INOUT_PV_INTERFACE && !ret) {
+		vcpu->arch.regs[VCPU_REGS_RBX] = out.val1;
+		vcpu->arch.regs[VCPU_REGS_RCX] = out.val2;
+		vcpu->arch.regs[VCPU_REGS_RDX] = out.val3;
+		vcpu->arch.regs[VCPU_REGS_RSI] = out.val4;
+	}
+	vcpu->arch.regs[VCPU_REGS_RAX] = ret;
 }
 
 static void handle_cr(struct kvm_vcpu *vcpu)

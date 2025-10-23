@@ -55,6 +55,7 @@ enum pkvm_fn {
 	__pkvm__check_processor_compatibility,
 	__pkvm__enable_virtualization_cpu,
 	__pkvm__disable_virtualization_cpu,
+	__pkvm__vm_init,
 };
 
 #define __kvm_call_pkvm_0(f)		kvm_hypercall4(f, 0, 0, 0, 0)

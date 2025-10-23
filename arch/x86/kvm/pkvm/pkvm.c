@@ -3,6 +3,8 @@
 #include <linux/kvm_host.h>
 #include <asm/fpu/xcr.h>
 #include "init_finalize.h"
+#include "mem_protect.h"
+#include "memory.h"
 #include "pkvm/lapic.h"
 #include "pkvm.h"
 #include "x86.h"
@@ -25,6 +27,20 @@ struct pkvm_hyp *pkvm_hyp;
 DEFINE_PER_CPU(struct pkvm_pcpu *, phys_cpu);
 DEFINE_PER_CPU(struct kvm_vcpu *, host_vcpu);
 
+static void *donate_host_memory(phys_addr_t phys, size_t size, bool clear)
+{
+	void *va;
+
+	if (pkvm_host_donate_hyp(phys, size))
+		return NULL;
+
+	va = __pkvm_va(phys);
+	if (clear)
+		memset(va, 0, size);
+
+	return va;
+}
+
 static int pkvm_enable_virtualization_cpu(void)
 {
 	kvm_user_return_msr_cpu_online();
@@ -35,6 +51,49 @@ static int pkvm_enable_virtualization_cpu(void)
 static void pkvm_disable_virtualization_cpu(void)
 {
 	kvm_x86_call(disable_virtualization_cpu)();
+}
+
+static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
+{
+	struct pkvm_vm *pkvm_vm;
+	struct kvm *shared_kvm;
+	size_t size;
+	u8 vm_type;
+	int ret;
+
+	ret = pkvm_host_share_hyp(host_kvm_pa, kvm_x86_call(vm_size));
+	if (ret)
+		return ret;
+
+	shared_kvm = __pkvm_va(host_kvm_pa);
+	vm_type = shared_kvm->arch.vm_type;
+	if (!kvm_is_vm_type_supported(vm_type)) {
+		ret = -EOPNOTSUPP;
+		goto unshare;
+	}
+
+	size = PAGE_ALIGN(PKVM_VM_BASE_SIZE + kvm_x86_call(vm_size));
+	pkvm_vm = donate_host_memory(pkvm_vm_pa, size, true);
+	if (!pkvm_vm) {
+		ret = -EINVAL;
+		goto unshare;
+	}
+
+	pkvm_vm->size = size;
+	pkvm_vm->shared_kvm = shared_kvm;
+	pkvm_vm->kvm.arch.vm_type = vm_type;
+
+	ret = kvm_x86_call(vm_init)(&pkvm_vm->kvm);
+	if (ret)
+		goto undonate;
+
+	return 0;
+
+undonate:
+	pkvm_hyp_donate_host(__pkvm_pa(pkvm_vm), size, false);
+unshare:
+	pkvm_host_unshare_hyp(host_kvm_pa, kvm_x86_call(vm_size));
+	return ret;
 }
 
 int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
@@ -56,6 +115,10 @@ int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
 		break;
 	case __pkvm__disable_virtualization_cpu:
 		pkvm_disable_virtualization_cpu();
+		break;
+	case __pkvm__vm_init:
+		ret = pkvm_vm_init(pkvm_host_gpa_to_phys(a0),
+				   pkvm_host_gpa_to_phys(a1));
 		break;
 	default:
 		ret = -EINVAL;

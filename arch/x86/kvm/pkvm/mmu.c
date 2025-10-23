@@ -199,22 +199,34 @@ static void set_host_mem_pgstate(unsigned long phys, unsigned long size,
 	}
 }
 
-static int check_host_mem_pgstate(unsigned long phys, unsigned long size,
-				  enum pkvm_page_state pgstate)
+static int check_host_mem_pgstates(unsigned long phys, unsigned long size,
+				   enum pkvm_page_state *pgstate, int nr_state)
 {
 	unsigned long end = PAGE_ALIGN(phys + size);
 	struct pkvm_page *page;
+	int i;
 
-	if (!is_memory_range(phys, size))
+	if (!pgstate || nr_state == 0 || !is_memory_range(phys, size))
 		return -EINVAL;
 
 	for (phys = PAGE_ALIGN_DOWN(phys); phys < end; phys += PAGE_SIZE) {
 		page = pkvm_phys_to_page(phys);
-		if (page->host_state != pgstate)
+		for (i = 0; i < nr_state; i++) {
+			if (page->host_state == pgstate[i])
+				break;
+		}
+
+		if (i == nr_state)
 			return -EPERM;
 	}
 
 	return 0;
+}
+
+static int check_host_mem_pgstate(unsigned long phys, unsigned long size,
+				  enum pkvm_page_state pgstate)
+{
+	return check_host_mem_pgstates(phys, size, &pgstate, 1);
 }
 
 struct page_ownership {
@@ -611,4 +623,116 @@ int pkvm_hyp_donate_host_mmio_locked(unsigned long phys, unsigned long size)
 		return ret;
 
 	return pkvm_pgtable_map(&host_mmu, phys, phys, size, prot);
+}
+
+/**
+ * pkvm_host_share_hyp() - Shares pages from host to hypervisor.
+ * @phys:	Physical address of the memory region to share.
+ * @size:	Size of the memory region to share.
+ *
+ * The sharing transfers the memory pages in range [@phys, @phys + @size) which
+ * are exclusively owned by the host to shared-owned by the host and the pKVM
+ * hypervisor. The host_share_hyp_count counter of those memory pages are
+ * incremented. If a memory page is already shared-owned, page state will not be
+ * changed but only increment the counter. @phys and @size are not required to be
+ * PAGE_SIZE aligned (@size is required to be non-zeroed value) to support
+ * sharing page-unaligned memory pages.
+ *
+ * Returns: 0 on success, or a negative error code on failure.
+ */
+int pkvm_host_share_hyp(unsigned long phys, unsigned long size)
+{
+	unsigned long end = PAGE_ALIGN(phys + size);
+	enum pkvm_page_state pgstates[] = {
+		PKVM_PAGE_OWNED,
+		PKVM_PAGE_SHARED_OWNED,
+	};
+	struct pkvm_page *page;
+	int ret;
+
+	if (size == 0)
+		return -EINVAL;
+
+	pkvm_host_mmu_lock();
+
+	ret = check_host_mem_pgstates(phys, size, pgstates, ARRAY_SIZE(pgstates));
+	if (ret)
+		goto unlock;
+
+	/*
+	 * TODO: Prevent sharing a memory page which is
+	 * shared-owned with a guest VM.
+	 */
+
+	for (phys = PAGE_ALIGN_DOWN(phys); phys < end; phys += PAGE_SIZE) {
+		page = pkvm_phys_to_page(phys);
+
+		if (page->host_state == PKVM_PAGE_OWNED)
+			page->host_state = PKVM_PAGE_SHARED_OWNED;
+
+		/*
+		 * The page state should be shared-owned otherwise
+		 * it must be a code bug.
+		 */
+		BUG_ON(page->host_state != PKVM_PAGE_SHARED_OWNED);
+
+		BUG_ON(page->host_share_hyp_count == U16_MAX);
+		page->host_share_hyp_count++;
+	}
+
+unlock:
+	pkvm_host_mmu_unlock();
+
+	return ret;
+}
+
+/**
+ * pkvm_host_unshare_hyp() - Host un-shares pages with hypervisor.
+ * @phys:	Physical address of the memory region to donate.
+ * @size:	Size of the memory region to donate.
+ *
+ * The unsharing transfers the memory pages in range [@phys, @phys + @size)
+ * which are shared-owned owned by the host and the pKVM hypervisor. The
+ * host_share_hyp_count counter for these memory pages are decremented. If a
+ * memory page's counter becomes to zero, change its page state to indicate
+ * this memory page is exclusively owned by the host. @phys and @size are not
+ * required to be PAGE_SIZE aligned (@size is required to be non-zeroed value)
+ * to support unsharing page-unaligned memory pages.
+ *
+ * Returns: 0 on success, or a negative error code on failure.
+ */
+int pkvm_host_unshare_hyp(unsigned long phys, unsigned long size)
+{
+	unsigned long end = PAGE_ALIGN(phys + size);
+	struct pkvm_page *page;
+	int ret;
+
+	if (size == 0)
+		return -EINVAL;
+
+	pkvm_host_mmu_lock();
+
+	ret = check_host_mem_pgstate(phys, size, PKVM_PAGE_SHARED_OWNED);
+	if (ret)
+		goto unlock;
+
+	/*
+	 * TODO: Prevent unsharing a memory page which is shared-owned
+	 * with a guest VM.
+	 */
+
+	for (phys = PAGE_ALIGN_DOWN(phys); phys < end; phys += PAGE_SIZE) {
+		page = pkvm_phys_to_page(phys);
+
+		BUG_ON(!page->host_share_hyp_count);
+		if (--page->host_share_hyp_count)
+			continue;
+
+		page->host_state = PKVM_PAGE_OWNED;
+	}
+
+unlock:
+	pkvm_host_mmu_unlock();
+
+	return ret;
 }

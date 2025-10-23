@@ -2,6 +2,7 @@
 #include <linux/kvm_host.h>
 #include <asm/kvm_pkvm.h>
 #include "early_alloc.h"
+#include "fpu.h"
 #include "init_finalize.h"
 #include "memory.h"
 #include "mmu.h"
@@ -273,6 +274,8 @@ int pkvm_init_finalize(struct pkvm_mem_info infos[], int nr_infos,
 	ret = pkvm_host_mmu_finalize(host_mmu_finalize_fn);
 	if (ret)
 		return ret;
+
+	pkvm_init_percpu_fpu();
 
 	this_cpu_write(cpu_finalized, true);
 	return 0;

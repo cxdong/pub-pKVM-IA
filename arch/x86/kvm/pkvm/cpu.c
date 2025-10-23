@@ -22,6 +22,8 @@ unsigned int nr_cpu_ids;
 DEFINE_PER_CPU(u64, x86_spec_ctrl_current);
 DEFINE_STATIC_KEY_FALSE(switch_vcpu_ibpb);
 unsigned int tsc_khz;
+DEFINE_PER_CPU(struct task_struct, pkvm_task);
+DEFINE_PER_CPU_CACHE_HOT(struct task_struct *, current_task);
 
 unsigned int pkvm_per_cpu_nr_pages(void)
 {
@@ -37,6 +39,7 @@ unsigned int pkvm_per_cpu_nr_pages(void)
 
 int pkvm_setup_per_cpu(int cpu, unsigned long base)
 {
+	struct task_struct *task;
 	struct pkvm_pcpu *pcpu;
 	struct kvm_vcpu *vcpu;
 
@@ -59,6 +62,10 @@ int pkvm_setup_per_cpu(int cpu, unsigned long base)
 	per_cpu(cpu_number, cpu) = cpu;
 	per_cpu(phys_cpu, cpu) = pcpu;
 	per_cpu(host_vcpu, cpu) = vcpu;
+
+	task = per_cpu_ptr(&pkvm_task, cpu);
+	task->group_leader = task;
+	per_cpu(current_task, cpu) = task;
 
 	return 0;
 }

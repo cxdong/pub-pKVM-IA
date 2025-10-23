@@ -4,6 +4,7 @@
 #include <asm/fpu/xcr.h>
 #include <asm/pkvm_spinlock.h>
 #include <lapic.h>
+#include "fpu.h"
 #include "init_finalize.h"
 #include "mem_protect.h"
 #include "memory.h"
@@ -272,6 +273,9 @@ static int pkvm_arch_vcpu_create(struct pkvm_vcpu *pkvm_vcpu, struct fpstate *fp
 	vcpu->arch.mcg_cap = KVM_MAX_MCE_BANKS;
 
 	vcpu->arch.guest_fpu.fpstate = fps;
+	pkvm_init_guest_fpu(&vcpu->arch.guest_fpu);
+	if (pkvm_is_protected_vcpu(vcpu))
+		fpstate_set_confidential(&vcpu->arch.guest_fpu);
 
 	return kvm_x86_call(vcpu_create)(vcpu);
 }

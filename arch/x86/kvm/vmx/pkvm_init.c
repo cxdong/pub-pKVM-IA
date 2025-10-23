@@ -349,9 +349,13 @@ static bool mitigate_spectre_v2(struct cpuinfo_x86 *c)
 	if (!boot_cpu_has(X86_FEATURE_IBPB))
 		return false;
 
-	/* Requires EIBRS_PBRSB is not effected */
-	if (boot_cpu_has_bug(X86_BUG_EIBRS_PBRSB))
-		return false;
+	if (boot_cpu_has_bug(X86_BUG_EIBRS_PBRSB)) {
+		/* Fill RSB after vmexit */
+		set_cpu_cap(&pkvm_sym(boot_cpu_data), X86_FEATURE_RSB_VMEXIT_LITE);
+
+		clear_bit(X86_BUG_EIBRS_PBRSB, (unsigned long *)c->x86_capability);
+		pr_info("mitigated eibrs_pbrsb when mitigating spectre_v2\n");
+	}
 
 	if (boot_cpu_has_bug(X86_BUG_BHI)) {
 		/* Require to set BHI_DIS_S to mitigate BHI bug */
@@ -409,6 +413,23 @@ static bool mitigate_bhi(void)
 	return true;
 }
 
+static bool mitigate_eibrs_pbrsb(void)
+{
+	/* Fill RSB after vmexti */
+	set_cpu_cap(&pkvm_sym(boot_cpu_data), X86_FEATURE_RSB_VMEXIT_LITE);
+
+	return true;
+}
+
+static bool mitigate_rfds(void)
+{
+	if (!(x86_read_arch_cap_msr() & ARCH_CAP_RFDS_CLEAR))
+		return false;
+
+	set_cpu_cap(&pkvm_sym(boot_cpu_data), X86_FEATURE_CLEAR_CPU_BUF);
+	return true;
+}
+
 /*
  * Make sure the CPU only with the bugs that can be mitigated by the pKVM
  * hypervisor can pass the check. The mitigated CPU bugs (as listed in
@@ -447,6 +468,12 @@ static bool mitigate_bhi(void)
  *
  * 6) X86_BUG_BHI:
  * Set SPEC_CTRL_BHI_DIS_S in spec ctrl MSR to mitigate BHI bug.
+ *
+ * 7) X86_BUG_EIBRS_PBRSB.
+ * Fill RSB after vmexit.
+ *
+ * 8) X86_BUG_RFDS.
+ * Requires ARCH_CAP_RFDS_CLEAR to clears CPU register file via VERW.
  *
  * Note: Beyond the above mitigations, the pKVM hypervisor also supports boot
  * time retpoline/rethunk patching to mitigate certain CPU (older than PTL)
@@ -493,6 +520,12 @@ static void pkvm_mitigate_cpu_bug(struct cpuinfo_x86 *c, unsigned long bug)
 	case X86_BUG_BHI:
 		mitigated = mitigate_bhi();
 		break;
+	case X86_BUG_EIBRS_PBRSB:
+		mitigated = mitigate_eibrs_pbrsb();
+		break;
+	case X86_BUG_RFDS:
+		mitigated = mitigate_rfds();
+		break;
 	default:
 		break;
 	}
@@ -516,6 +549,8 @@ static unsigned long possible_cpu_bugs[] = {
 	X86_BUG_SPEC_STORE_BYPASS,
 	X86_BUG_SWAPGS,
 	X86_BUG_BHI,
+	X86_BUG_EIBRS_PBRSB,
+	X86_BUG_RFDS,
 };
 
 static bool pkvm_has_unmitigated_cpu_bugs(void)

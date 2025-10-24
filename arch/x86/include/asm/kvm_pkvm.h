@@ -98,6 +98,7 @@ extern u64 pkvm_sym(sme_me_mask);
 extern struct cpumask pkvm_sym(__cpu_possible_mask);
 extern unsigned int pkvm_sym(nr_cpu_ids);
 DECLARE_STATIC_KEY_FALSE(pkvm_sym(switch_vcpu_ibpb));
+extern unsigned int pkvm_sym(tsc_khz);
 
 u64 pkvm_total_reserve_pages(void);
 PKVM_DECLARE(void *, pkvm_early_alloc_page, (void));

@@ -329,6 +329,9 @@ static int __vcpu_create(struct kvm *kvm, struct kvm_vcpu *vcpu, struct fpstate 
 	vcpu->arch.regs_avail = ~0;
 	vcpu->arch.regs_dirty = ~0;
 	vcpu->arch.pat = MSR_IA32_CR_PAT_DEFAULT;
+	vcpu->arch.arch_capabilities = kvm_get_arch_capabilities();
+	vcpu->arch.msr_platform_info = MSR_PLATFORM_INFO_CPUID_FAULT;
+
 	vcpu->arch.mce_banks = (void *)pkvm_vcpu + PKVM_VCPU_BASE_SIZE + kvm_vcpu_sz;
 	vcpu->arch.mci_ctl2_banks = (void *)vcpu->arch.mce_banks + KVM_MCE_SIZE;
 	vcpu->arch.mcg_cap = KVM_MAX_MCE_BANKS;

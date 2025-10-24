@@ -445,6 +445,7 @@ unlock:
  * pkvm_hyp_donate_host() - Donate memory pages from hypervisor to host.
  * @phys:	Physical address of the memory region to donate.
  * @size:	Size of the memory region to donate.
+ * @clear:	If true, clear the memory region before donating.
  *
  * The donation transfers ownership of the memory pages in range
  * [@phys, @phys + @size) from the hypervisor to the host, thus allowing the
@@ -458,14 +459,18 @@ unlock:
  *
  * Returns: 0 on success, or a negative error code on failure.
  */
-int pkvm_hyp_donate_host(unsigned long phys, unsigned long size)
+int pkvm_hyp_donate_host(unsigned long phys, unsigned long size, bool clear)
 {
 	u64 prot = host_mmu.pgt_ops->calc_pte_perm(true, true, true) |
 		   host_mmu.pgt_ops->calc_pte_memtype(false);
+	void *va = __pkvm_va(phys);
 	int ret;
 
 	if (!PAGE_ALIGNED(phys) || !PAGE_ALIGNED(size) || size == 0)
 		return -EINVAL;
+
+	if (clear)
+		pkvm_clear_memory(va, size);
 
 	pkvm_host_mmu_lock();
 

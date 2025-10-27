@@ -29,6 +29,20 @@ static void pkvm_disable_virtualization_cpu(void)
 	kvm_call_pkvm(disable_virtualization_cpu);
 }
 
+static void pkvm_emergency_disable_virtualization_cpu(void)
+{
+	/*
+	 * Just leverage disable_virtualization_cpu PV interface for emergency.
+	 * Once the pKVM hypervisor supports emulating INIT-SIPI, this can also
+	 * be leveraged.
+	 *
+	 * Note: an alternative is to make the pKVM hypervisor to support the
+	 * host disabling VMX together with wiping all the pVMs' CPU and memory
+	 * state via a dedicated PV interface for emergency.
+	 */
+	kvm_call_pkvm(disable_virtualization_cpu);
+}
+
 struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -36,4 +50,5 @@ struct kvm_x86_ops pkvm_host_x86_ops __initdata = {
 
 	.enable_virtualization_cpu = pkvm_enable_virtualization_cpu,
 	.disable_virtualization_cpu = pkvm_disable_virtualization_cpu,
+	.emergency_disable_virtualization_cpu = pkvm_emergency_disable_virtualization_cpu,
 };

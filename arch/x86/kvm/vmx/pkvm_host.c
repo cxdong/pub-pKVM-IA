@@ -962,6 +962,16 @@ static void pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 		kvm_free_pkvm_memcache(&out.vcpu_after_set_cpuid.memcache);
 }
 
+static void pkvm_write_tsc_offset(struct kvm_vcpu *vcpu)
+{
+	pkvm_hypercall(write_tsc_offset, vcpu->arch.tsc_offset);
+}
+
+static void pkvm_write_tsc_multiplier(struct kvm_vcpu *vcpu)
+{
+	pkvm_hypercall(write_tsc_multiplier, vcpu->arch.tsc_scaling_ratio);
+}
+
 static bool pkvm_apic_init_signal_blocked(struct kvm_vcpu *vcpu)
 {
 	/*
@@ -1053,6 +1063,9 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.dy_apicv_has_pending_interrupt = pi_has_pending_interrupt,
 
 	.vcpu_after_set_cpuid = pkvm_vcpu_after_set_cpuid,
+
+	.write_tsc_offset = pkvm_write_tsc_offset,
+	.write_tsc_multiplier = pkvm_write_tsc_multiplier,
 
 	.pi_update_irte = vmx_pi_update_irte,
 	.pi_start_bypass = vmx_pi_start_bypass,

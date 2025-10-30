@@ -230,6 +230,94 @@ static int handle_nmi_window(struct kvm_vcpu *vcpu)
 	return 1;
 }
 
+static int pkvm_complete_fast_pio_out(struct kvm_vcpu *vcpu)
+{
+	vcpu->arch.pio.count = 0;
+
+	return pkvm_is_protected_vcpu(vcpu) ? 1 : kvm_skip_emulated_instruction(vcpu);
+}
+
+static int pkvm_fast_pio_out(struct kvm_vcpu *vcpu, int size,
+			    unsigned short port)
+{
+	struct x86_emulate_ctxt *ctxt = vcpu->arch.emulate_ctxt;
+	unsigned long val = kvm_rax_read(vcpu);
+	int ret;
+
+	ret = ctxt->ops->pio_out_emulated(ctxt, size, port, &val, 1);
+	if (ret)
+		return ret;
+
+	vcpu->arch.complete_userspace_io = pkvm_complete_fast_pio_out;
+	return 0;
+}
+
+static int pkvm_complete_fast_pio_in(struct kvm_vcpu *vcpu)
+{
+	unsigned int count = vcpu->arch.pio.count;
+	int size = vcpu->arch.pio.size;
+	unsigned long val;
+
+	/* We should only ever be called with arch.pio.count equal to 1 */
+	BUG_ON(vcpu->arch.pio.count != 1);
+
+	/* For size less than 4 we merge, else we zero extend */
+	val = (vcpu->arch.pio.size < 4) ? kvm_rax_read(vcpu) : 0;
+	memcpy(&val, vcpu->arch.pio_data, size * count);
+
+	trace_kvm_pio(KVM_PIO_IN, vcpu->arch.pio.port, size, count, vcpu->arch.pio_data);
+	vcpu->arch.pio.count = 0;
+	kvm_rax_write(vcpu, val);
+
+	return pkvm_is_protected_vcpu(vcpu) ? 1 : kvm_skip_emulated_instruction(vcpu);
+}
+
+static int pkvm_fast_pio_in(struct kvm_vcpu *vcpu, int size,
+			    unsigned short port)
+{
+	struct x86_emulate_ctxt *ctxt = vcpu->arch.emulate_ctxt;
+	unsigned long val;
+	int ret;
+
+	/* For size less than 4 we merge, else we zero extend */
+	val = (size < 4) ? kvm_rax_read(vcpu) : 0;
+
+	ret = ctxt->ops->pio_in_emulated(ctxt, size, port, &val, 1);
+	if (ret) {
+		kvm_rax_write(vcpu, val);
+		return ret;
+	}
+
+	vcpu->arch.complete_userspace_io = pkvm_complete_fast_pio_in;
+	return 0;
+}
+
+static int handle_io(struct kvm_vcpu *vcpu)
+{
+	unsigned long exit_qualification;
+	int size, in, string;
+	unsigned int port;
+	int ret;
+
+	exit_qualification = vmx_get_exit_qual(vcpu);
+	string = (exit_qualification & 16) != 0;
+
+	++vcpu->stat.io_exits;
+
+	if (string)
+		return kvm_emulate_instruction(vcpu, 0);
+
+	port = exit_qualification >> 16;
+	size = (exit_qualification & 7) + 1;
+	in = (exit_qualification & 8) != 0;
+
+	ret = in ? pkvm_fast_pio_in(vcpu, size, port) :
+		   pkvm_fast_pio_out(vcpu, size, port);
+
+	return pkvm_is_protected_vcpu(vcpu) ?
+			ret : (ret && kvm_skip_emulated_instruction(vcpu));
+}
+
 /*
  * The exit handlers return 1 if the exit was handled fully and guest execution
  * may resume.  Otherwise they set the kvm_run parameter to indicate what needs
@@ -240,6 +328,7 @@ static int (*pkvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 	[EXIT_REASON_EXTERNAL_INTERRUPT]      = handle_external_interrupt,
 	[EXIT_REASON_TRIPLE_FAULT]            = handle_triple_fault,
 	[EXIT_REASON_NMI_WINDOW]	      = handle_nmi_window,
+	[EXIT_REASON_IO_INSTRUCTION]          = handle_io,
 };
 
 static const int pkvm_vmx_max_exit_handlers = ARRAY_SIZE(pkvm_vmx_exit_handlers);

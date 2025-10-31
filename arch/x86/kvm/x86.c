@@ -162,10 +162,10 @@ struct kvm_x86_ops kvm_x86_ops __read_mostly;
 #include <asm/kvm-x86-ops.h>
 EXPORT_STATIC_CALL_GPL(kvm_x86_get_cs_db_l_bits);
 EXPORT_STATIC_CALL_GPL(kvm_x86_cache_reg);
+#endif /* !__PKVM_HYP__ */
 
 static bool __read_mostly ignore_msrs = 0;
 module_param(ignore_msrs, bool, 0644);
-#endif /* !__PKVM_HYP__ */
 
 bool __read_mostly report_ignored_msrs = true;
 module_param(report_ignored_msrs, bool, 0644);
@@ -522,6 +522,7 @@ static bool kvm_is_advertised_msr(u32 msr_index)
 
 	return false;
 }
+#endif /* !__PKVM_HYP__ */
 
 typedef int (*msr_access_t)(struct kvm_vcpu *vcpu, u32 index, u64 *data,
 			    bool host_initiated);
@@ -548,6 +549,11 @@ static __always_inline int kvm_do_msr_access(struct kvm_vcpu *vcpu, u32 msr,
 		return ret;
 
 	/*
+	 * For KVM_MSR_RET_UNSUPPORTED result, the pKVM hypervisor can switch
+	 * back to the host and let the host to decide how to handle this MSR.
+	 */
+#ifndef __PKVM_HYP__
+	/*
 	 * Userspace is allowed to read MSRs, and write '0' to MSRs, that KVM
 	 * advertises to userspace, even if an MSR isn't fully supported.
 	 * Simply check that @data is '0', which covers both the write '0' case
@@ -555,6 +561,7 @@ static __always_inline int kvm_do_msr_access(struct kvm_vcpu *vcpu, u32 msr,
 	 */
 	if (host_initiated && !*data && kvm_is_advertised_msr(msr))
 		return 0;
+#endif
 
 	if (!ignore_msrs) {
 		kvm_debug_ratelimited("unhandled %s: 0x%x data 0x%llx\n",
@@ -568,6 +575,7 @@ static __always_inline int kvm_do_msr_access(struct kvm_vcpu *vcpu, u32 msr,
 	return 0;
 }
 
+#ifndef __PKVM_HYP__
 static struct kmem_cache *kvm_alloc_emulator_cache(void)
 {
 	unsigned int useroffset = offsetof(struct x86_emulate_ctxt, src);
@@ -2116,7 +2124,6 @@ int kvm_msr_read(struct kvm_vcpu *vcpu, u32 index, u64 *data)
 	return __kvm_get_msr(vcpu, index, data, true);
 }
 
-#ifndef __PKVM_HYP__
 static int kvm_get_msr_ignored_check(struct kvm_vcpu *vcpu,
 				     u32 index, u64 *data, bool host_initiated)
 {
@@ -2130,11 +2137,13 @@ int __kvm_emulate_msr_read(struct kvm_vcpu *vcpu, u32 index, u64 *data)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(__kvm_emulate_msr_read);
 
+#ifndef __PKVM_HYP__
 int __kvm_emulate_msr_write(struct kvm_vcpu *vcpu, u32 index, u64 data)
 {
 	return kvm_set_msr_ignored_check(vcpu, index, data, false);
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(__kvm_emulate_msr_write);
+#endif /* __PKVM_HYP__ */
 
 int kvm_emulate_msr_read(struct kvm_vcpu *vcpu, u32 index, u64 *data)
 {
@@ -2145,6 +2154,7 @@ int kvm_emulate_msr_read(struct kvm_vcpu *vcpu, u32 index, u64 *data)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_emulate_msr_read);
 
+#ifndef __PKVM_HYP__
 int kvm_emulate_msr_write(struct kvm_vcpu *vcpu, u32 index, u64 data)
 {
 	if (!kvm_msr_allowed(vcpu, index, KVM_MSR_FILTER_WRITE))
@@ -2227,6 +2237,7 @@ static int kvm_msr_user_space(struct kvm_vcpu *vcpu, u32 index,
 
 	return 1;
 }
+#endif /* !__PKVM_HYP__ */
 
 static int __kvm_emulate_rdmsr(struct kvm_vcpu *vcpu, u32 msr, int reg,
 			       int (*complete_rdmsr)(struct kvm_vcpu *))
@@ -2246,10 +2257,19 @@ static int __kvm_emulate_rdmsr(struct kvm_vcpu *vcpu, u32 msr, int reg,
 			kvm_register_write(vcpu, reg, data);
 		}
 	} else {
+#ifndef __PKVM_HYP__
 		/* MSR read failed? See if we should ask user space */
 		if (kvm_msr_user_space(vcpu, msr, KVM_EXIT_X86_RDMSR, 0,
 				       complete_rdmsr, r))
 			return 0;
+#else
+		/*
+		 * The pKVM hypervisor will handle the failures (r == 1) of
+		 * emulating RDMSR. Otherwise, back to the host to handle.
+		 */
+		if (r != 1)
+			return 0;
+#endif
 		trace_kvm_msr_read_ex(msr);
 	}
 
@@ -2258,11 +2278,16 @@ static int __kvm_emulate_rdmsr(struct kvm_vcpu *vcpu, u32 msr, int reg,
 
 int kvm_emulate_rdmsr(struct kvm_vcpu *vcpu)
 {
+#ifndef __PKVM_HYP__
 	return __kvm_emulate_rdmsr(vcpu, kvm_rcx_read(vcpu), -1,
 				   complete_fast_rdmsr);
+#else
+	return __kvm_emulate_rdmsr(vcpu, kvm_rcx_read(vcpu), -1, NULL);
+#endif
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_emulate_rdmsr);
 
+#ifndef __PKVM_HYP__
 int kvm_emulate_rdmsr_imm(struct kvm_vcpu *vcpu, u32 msr, int reg)
 {
 	vcpu->arch.cui_rdmsr_imm_reg = reg;

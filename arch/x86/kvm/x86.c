@@ -1061,6 +1061,7 @@ bool kvm_require_cpl(struct kvm_vcpu *vcpu, int required_cpl)
 	kvm_queue_exception_e(vcpu, GP_VECTOR, 0);
 	return false;
 }
+#endif /* !__PKVM_HYP__ */
 
 bool kvm_require_dr(struct kvm_vcpu *vcpu, int dr)
 {
@@ -1072,6 +1073,7 @@ bool kvm_require_dr(struct kvm_vcpu *vcpu, int dr)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_require_dr);
 
+#ifndef __PKVM_HYP__
 static inline u64 pdptr_rsvd_bits(struct kvm_vcpu *vcpu)
 {
 	return vcpu->arch.reserved_gpa_bits | rsvd_bits(5, 8) | rsvd_bits(1, 2);
@@ -1596,7 +1598,6 @@ void kvm_update_dr7(struct kvm_vcpu *vcpu)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_update_dr7);
 
-#ifndef __PKVM_HYP__
 static u64 kvm_dr6_fixed(struct kvm_vcpu *vcpu)
 {
 	u64 fixed = DR6_FIXED_1;
@@ -1655,6 +1656,7 @@ unsigned long kvm_get_dr(struct kvm_vcpu *vcpu, int dr)
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_get_dr);
 
+#ifndef __PKVM_HYP__
 int kvm_emulate_rdpmc(struct kvm_vcpu *vcpu)
 {
 	u32 pmc = kvm_rcx_read(vcpu);

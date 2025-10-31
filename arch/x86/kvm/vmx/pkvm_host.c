@@ -12,6 +12,8 @@
 
 static unsigned short has_wbinvd_exit = USHRT_MAX;
 
+static bool pkvm_has_vmx_wbinvd_exit(void);
+
 static void pkvm_free_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 {
 	if (!loaded_vmcs->vmcs)
@@ -118,6 +120,11 @@ static void pkvm_cache_segment(struct vcpu_vmx *vmx, struct kvm_segment *var, in
 		      (var->s << 4)	 |
 		      var->type;
 	pkvm_segment_cache_set(vmx, seg, SEG_FIELD_AR);
+}
+
+static void wbinvd_ipi(void *garbage)
+{
+	wbinvd();
 }
 
 static fastpath_t pkvm_exit_handlers_fastpath(struct kvm_vcpu *vcpu)
@@ -386,6 +393,25 @@ static int handle_apic_eoi_induced(struct kvm_vcpu *vcpu)
 	return 1;
 }
 
+static int handle_wbinvd(struct kvm_vcpu *vcpu)
+{
+	if (!kvm_arch_has_noncoherent_dma(vcpu->kvm))
+		return 1;
+
+	if (pkvm_has_vmx_wbinvd_exit()) {
+		int cpu = get_cpu();
+
+		cpumask_set_cpu(cpu, vcpu->arch.wbinvd_dirty_mask);
+		on_each_cpu_mask(vcpu->arch.wbinvd_dirty_mask,
+				wbinvd_ipi, NULL, 1);
+		put_cpu();
+		cpumask_clear(vcpu->arch.wbinvd_dirty_mask);
+	} else
+		wbinvd();
+
+	return 1;
+}
+
 /*
  * The exit handlers return 1 if the exit was handled fully and guest execution
  * may resume.  Otherwise they set the kvm_run parameter to indicate what needs
@@ -406,6 +432,7 @@ static int (*pkvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 	[EXIT_REASON_TPR_BELOW_THRESHOLD]     = handle_tpr_below_threshold,
 	[EXIT_REASON_APIC_WRITE]              = handle_apic_write,
 	[EXIT_REASON_EOI_INDUCED]             = handle_apic_eoi_induced,
+	[EXIT_REASON_WBINVD]                  = handle_wbinvd,
 };
 
 static const int pkvm_vmx_max_exit_handlers = ARRAY_SIZE(pkvm_vmx_exit_handlers);

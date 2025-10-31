@@ -8746,16 +8746,23 @@ static int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
 		wbinvd();
 	return X86EMUL_CONTINUE;
 }
+#endif /* !__PKVM_HYP__ */
 
 int kvm_emulate_wbinvd(struct kvm_vcpu *vcpu)
 {
+#ifndef __PKVM_HYP__
 	kvm_emulate_wbinvd_noskip(vcpu);
 	return kvm_skip_emulated_instruction(vcpu);
+#else
+	WARN_ON_ONCE(kvm_skip_emulated_instruction(vcpu) != 1);
+	return 0;
+#endif
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_emulate_wbinvd);
 
 
 
+#ifndef __PKVM_HYP__
 static void emulator_wbinvd(struct x86_emulate_ctxt *ctxt)
 {
 	kvm_emulate_wbinvd_noskip(emul_to_vcpu(ctxt));

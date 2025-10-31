@@ -10601,6 +10601,52 @@ static int complete_hypercall_exit(struct kvm_vcpu *vcpu)
 	return kvm_skip_emulated_instruction(vcpu);
 }
 
+static int kvm_pkvm_hypercall(struct kvm_vcpu *vcpu)
+{
+	unsigned long nr = kvm_rax_read(vcpu);
+	int ret;
+
+	switch (nr) {
+	case PKVM_GHC_IOREAD: {
+		int size= kvm_rcx_read(vcpu);
+
+		if (size > sizeof(*vcpu->arch.regs)) {
+			vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+			vcpu->run->internal.suberror = KVM_INTERNAL_ERROR_EMULATION;
+			vcpu->run->internal.ndata = 0;
+			return 1;
+		}
+
+		vcpu->mmio_is_write = 0;
+		/* Leverage sev_es MMIO read */
+		ret = kvm_sev_es_mmio_read(vcpu, kvm_rbx_read(vcpu), size,
+					   &vcpu->arch.regs[VCPU_REGS_RAX]);
+		break;
+	}
+	case PKVM_GHC_IOWRITE: {
+		unsigned long val = kvm_rdx_read(vcpu);
+		int size= kvm_rcx_read(vcpu);
+
+		if (size > sizeof(val)) {
+			vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+			vcpu->run->internal.suberror = KVM_INTERNAL_ERROR_EMULATION;
+			vcpu->run->internal.ndata = 0;
+			return 1;
+		}
+
+		vcpu->mmio_is_write = 1;
+		/* Leverage sev_es MMIO write */
+		ret = kvm_sev_es_mmio_write(vcpu, kvm_rbx_read(vcpu), size, &val);
+		break;
+	}
+	default:
+		ret = 1;
+		break;
+	}
+
+	return ret;
+}
+
 int ____kvm_emulate_hypercall(struct kvm_vcpu *vcpu, int cpl,
 			      int (*complete_hypercall)(struct kvm_vcpu *))
 {
@@ -10707,6 +10753,9 @@ EXPORT_SYMBOL_FOR_KVM_INTERNAL(____kvm_emulate_hypercall);
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
+	if (pkvm_is_protected_vcpu(vcpu))
+		return kvm_pkvm_hypercall(vcpu);
+
 	if (kvm_xen_hypercall_enabled(vcpu->kvm))
 		return kvm_xen_hypercall(vcpu);
 
@@ -14869,6 +14918,7 @@ int pkvm_vcpu_enter_guest(struct kvm_vcpu *vcpu, bool force_immediate_exit,
 int pkvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	int ret = -KVM_EPERM;
+	u64 nr;
 
 	if (!pkvm_is_protected_vcpu(vcpu))
 		return 0;
@@ -14876,6 +14926,19 @@ int pkvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 	if (kvm_x86_call(get_cpl)(vcpu)) {
 		kvm_inject_gp(vcpu, 0);
 		return 1;
+	}
+
+	nr = kvm_rax_read(vcpu);
+
+	switch (nr) {
+	case PKVM_GHC_IOREAD:
+	case PKVM_GHC_IOWRITE:
+		/* Hypercall for MMIO accessing should be forwared to the host */
+		kvm_skip_emulated_instruction(vcpu);
+		return 0;
+	default:
+		/* The other hypercalls are not supported */
+		break;
 	}
 
 	kvm_rax_write(vcpu, ret);

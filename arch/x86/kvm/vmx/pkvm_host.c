@@ -1642,6 +1642,22 @@ static int pkvm_leave_smm(struct kvm_vcpu *vcpu, const union kvm_smram *smram)
 static void pkvm_enable_smi_window(struct kvm_vcpu *vcpu) {}
 #endif
 
+static int pkvm_check_emulate_instruction(struct kvm_vcpu *vcpu, int emul_type,
+					  void *insn, int insn_len)
+{
+	/*
+	 * This can only be triggered when the host is emulating a MMIO
+	 * instruction.
+	 *
+	 * For the pVM, this shouldn't happen if the pVM is enlightened to use
+	 * hypercall to access MMIO.
+	 */
+	KVM_BUG_ON(pkvm_is_protected_vcpu(vcpu), vcpu->kvm);
+
+	/* For npVM, the instruction can be emulated */
+	return X86EMUL_CONTINUE;
+}
+
 static bool pkvm_apic_init_signal_blocked(struct kvm_vcpu *vcpu)
 {
 	/*
@@ -1788,6 +1804,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.enable_smi_window = pkvm_enable_smi_window,
 #endif
 
+	.check_emulate_instruction = pkvm_check_emulate_instruction,
 	.apic_init_signal_blocked = pkvm_apic_init_signal_blocked,
 
 	.recalc_intercepts = pkvm_recalc_intercepts,

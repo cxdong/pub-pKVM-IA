@@ -1985,6 +1985,7 @@ out_free:
 	kvfree(array.entries);
 	return r;
 }
+#endif /* !defined(__PKVM_HYP__) */
 
 /*
  * Intel CPUID semantics treats any query for an out-of-range leaf as if the
@@ -2083,6 +2084,7 @@ bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 			    !kvm_msr_read(vcpu, MSR_IA32_TSX_CTRL, &data) &&
 			    (data & TSX_CTRL_CPUID_CLEAR))
 				*ebx &= ~(feature_bit(RTM) | feature_bit(HLE));
+#ifndef __PKVM_HYP__
 		} else if (function == 0x80000007) {
 			if (kvm_hv_invtsc_suppressed(vcpu))
 				*edx &= ~feature_bit(CONSTANT_TSC);
@@ -2102,7 +2104,29 @@ bool kvm_cpuid(struct kvm_vcpu *vcpu, u32 *eax, u32 *ebx,
 			} else if (index == 2) {
 				*eax = vcpu->arch.hw_tsc_khz;
 			}
+#endif
 		}
+#ifdef __PKVM_HYP__
+		/*
+		 * TODO:
+		 * Overriding the KVM_CPUID_SIGNATURE leaf with "PKVMPKVMPKVM"
+		 * is to make the guest aware that it is running with the
+		 * protection from the pKVM hypervisor so it has to enable some
+		 * enlightenment.
+		 *
+		 * To achieve this, is there any better solution rather than
+		 * changing the KVM_CPUID_SIGNATURE leaf? Probably other leaf
+		 * like 0x21 which is used by TDX guest?
+		 */
+		if ((function == KVM_CPUID_SIGNATURE) &&
+		     pkvm_is_protected_vcpu(vcpu)) {
+			const u32 *sigptr = (const u32 *)"PKVMPKVMPKVM";
+
+			*ebx = sigptr[0];
+			*ecx = sigptr[1];
+			*edx = sigptr[2];
+		}
+#endif
 	} else {
 		*eax = *ebx = *ecx = *edx = 0;
 		/*
@@ -2143,7 +2167,8 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
 	return kvm_skip_emulated_instruction(vcpu);
 }
 EXPORT_SYMBOL_FOR_KVM_INTERNAL(kvm_emulate_cpuid);
-#else  /* !__PKVM_HYP__ */
+
+#ifdef __PKVM_HYP__
 
 static DEFINE_PER_CPU(struct kvm_cpuid_entry2, cpuid_def[KVM_MAX_CPUID_ENTRIES]);
 
@@ -2388,4 +2413,4 @@ int pkvm_enforce_cpuid(struct kvm_cpuid_entry2 *e2, int *nent, int max_nent)
 
 	return 0;
 }
-#endif /* !__PKVM_HYP__ */
+#endif /* __PKVM_HYP__ */

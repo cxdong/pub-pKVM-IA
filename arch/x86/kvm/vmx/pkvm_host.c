@@ -122,8 +122,12 @@ static void pkvm_cache_segment(struct vcpu_vmx *vmx, struct kvm_segment *var, in
 
 static fastpath_t pkvm_exit_handlers_fastpath(struct kvm_vcpu *vcpu)
 {
-	/* TODO Handle vmexit for fastpath */
-	return EXIT_FASTPATH_NONE;
+	switch (vmx_get_exit_reason(vcpu).basic) {
+	case EXIT_REASON_MSR_WRITE:
+		return handle_fastpath_wrmsr(vcpu);
+	default:
+		return EXIT_FASTPATH_NONE;
+	}
 }
 
 static int handle_exception_nmi(struct kvm_vcpu *vcpu)

@@ -339,10 +339,20 @@ static int __vcpu_create(struct kvm *kvm, struct kvm_vcpu *vcpu, struct fpstate 
 {
 	struct pkvm_vcpu *pkvm_vcpu = to_pkvm_vcpu(vcpu);
 	int ret = kvm_x86_call(vcpu_precreate)(kvm);
+	struct pkvm_vm *pkvm_vm = to_pkvm(kvm);
 	int cpu = raw_smp_processor_id();
 
 	if (ret)
 		return ret;
+
+	pkvm_spin_lock(&pkvm_vm->lock);
+
+	if (!kvm->arch.bus_lock_detection_enabled &&
+	    pkvm_vm->shared_kvm->arch.bus_lock_detection_enabled &&
+	    kvm_caps.has_bus_lock_exit)
+		kvm->arch.bus_lock_detection_enabled = true;
+
+	pkvm_spin_unlock(&pkvm_vm->lock);
 
 	vcpu->kvm = kvm;
 	/* Set cpu to -1 to indicate it is not loaded on any CPU */

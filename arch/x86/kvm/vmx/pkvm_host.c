@@ -1527,6 +1527,8 @@ static bool pkvm_apic_init_signal_blocked(struct kvm_vcpu *vcpu)
 	return false;
 }
 
+static void pkvm_recalc_intercepts(struct kvm_vcpu *vcpu) {}
+
 static int pkvm_complete_emulated_msr(struct kvm_vcpu *vcpu, int err)
 {
 	if (pkvm_is_protected_vcpu(vcpu)) {
@@ -1660,6 +1662,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 
 	.apic_init_signal_blocked = pkvm_apic_init_signal_blocked,
 
+	.recalc_intercepts = pkvm_recalc_intercepts,
 	.complete_emulated_msr = pkvm_complete_emulated_msr,
 
 	.vcpu_deliver_sipi_vector = kvm_vcpu_deliver_sipi_vector,

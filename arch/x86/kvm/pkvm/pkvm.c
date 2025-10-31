@@ -1288,6 +1288,11 @@ static int pkvm_complete_emulated_msr(struct kvm_vcpu *vcpu, int err)
 	return 1;
 }
 
+static bool pkvm_has_wbinvd_exit(void)
+{
+	return kvm_x86_call(has_wbinvd_exit)();
+}
+
 static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc hc,
 					   union pkvm_hc_data *in, union pkvm_hc_data *out)
 {
@@ -1523,6 +1528,9 @@ void pkvm_handle_host_hypercall(struct kvm_vcpu *vcpu)
 	case __pkvm__vcpu_put:
 		ret = pkvm_vcpu_put(pkvm_hc_input1(vcpu),
 				    pkvm_hc_input2(vcpu));
+		break;
+	case __pkvm__has_wbinvd_exit:
+		ret = pkvm_has_wbinvd_exit();
 		break;
 	default:
 		ret = pkvm_vcpu_handle_host_hypercall(vcpu, hc, &in, &out);

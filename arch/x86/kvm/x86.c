@@ -83,10 +83,10 @@
 #include <asm/intel_pt.h>
 #include <asm/emulate_prefix.h>
 #include <asm/sgx.h>
+#include <asm/kvm_pkvm.h>
 #include <clocksource/hyperv_timer.h>
 
 #ifdef __PKVM_HYP__
-#include <asm/kvm_pkvm.h>
 #include "pkvm.h"
 
 #undef module_param_named
@@ -10579,6 +10579,52 @@ static int complete_hypercall_exit(struct kvm_vcpu *vcpu)
 	return kvm_skip_emulated_instruction(vcpu);
 }
 
+static int kvm_pkvm_hypercall(struct kvm_vcpu *vcpu)
+{
+	unsigned long nr = kvm_rax_read(vcpu);
+	int ret;
+
+	switch (nr) {
+	case PKVM_GHC_IOREAD: {
+		int size= kvm_rcx_read(vcpu);
+
+		if (size > sizeof(*vcpu->arch.regs)) {
+			vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+			vcpu->run->internal.suberror = KVM_INTERNAL_ERROR_EMULATION;
+			vcpu->run->internal.ndata = 0;
+			return 1;
+		}
+
+		vcpu->mmio_is_write = 0;
+		/* Leverage sev_es MMIO read */
+		ret = kvm_sev_es_mmio_read(vcpu, kvm_rbx_read(vcpu), size,
+					   &vcpu->arch.regs[VCPU_REGS_RAX]);
+		break;
+	}
+	case PKVM_GHC_IOWRITE: {
+		unsigned long val = kvm_rdx_read(vcpu);
+		int size= kvm_rcx_read(vcpu);
+
+		if (size > sizeof(val)) {
+			vcpu->run->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+			vcpu->run->internal.suberror = KVM_INTERNAL_ERROR_EMULATION;
+			vcpu->run->internal.ndata = 0;
+			return 1;
+		}
+
+		vcpu->mmio_is_write = 1;
+		/* Leverage sev_es MMIO write */
+		ret = kvm_sev_es_mmio_write(vcpu, kvm_rbx_read(vcpu), size, &val);
+		break;
+	}
+	default:
+		ret = 1;
+		break;
+	}
+
+	return ret;
+}
+
 int ____kvm_emulate_hypercall(struct kvm_vcpu *vcpu, int cpl,
 			      int (*complete_hypercall)(struct kvm_vcpu *))
 {
@@ -10685,6 +10731,9 @@ EXPORT_SYMBOL_FOR_KVM_INTERNAL(____kvm_emulate_hypercall);
 
 int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
+	if (pkvm_is_protected_vcpu(vcpu))
+		return kvm_pkvm_hypercall(vcpu);
+
 	if (kvm_xen_hypercall_enabled(vcpu->kvm))
 		return kvm_xen_hypercall(vcpu);
 

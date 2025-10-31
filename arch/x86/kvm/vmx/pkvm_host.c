@@ -10,6 +10,8 @@
 #include "x86_ops.h"
 #include "vmx.h"
 
+static unsigned short has_wbinvd_exit = USHRT_MAX;
+
 static void pkvm_free_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 {
 	if (!loaded_vmcs->vmcs)
@@ -1496,6 +1498,14 @@ static void pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu)
 		kvm_free_pkvm_memcache(&out.vcpu_after_set_cpuid.memcache);
 }
 
+static bool pkvm_has_vmx_wbinvd_exit(void)
+{
+	if (unlikely(has_wbinvd_exit == USHRT_MAX))
+		has_wbinvd_exit = !!pkvm_hypercall(has_wbinvd_exit);
+
+	return has_wbinvd_exit;
+}
+
 static u64 pkvm_get_l2_tsc_offset(struct kvm_vcpu *vcpu)
 {
 	return 0;
@@ -1683,6 +1693,8 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.get_entry_info = pkvm_get_entry_info,
 
 	.vcpu_after_set_cpuid = pkvm_vcpu_after_set_cpuid,
+
+	.has_wbinvd_exit = pkvm_has_vmx_wbinvd_exit,
 
 	.get_l2_tsc_offset = pkvm_get_l2_tsc_offset,
 	.get_l2_tsc_multiplier = pkvm_get_l2_tsc_multiplier,

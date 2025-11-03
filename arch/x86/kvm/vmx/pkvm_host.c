@@ -857,6 +857,8 @@ static void pkvm_vcpu_reset(struct kvm_vcpu *vcpu, bool init_event)
 	}
 }
 
+static void pkvm_prepare_switch_to_guest(struct kvm_vcpu *vcpu) {}
+
 static void pkvm_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
@@ -1151,6 +1153,8 @@ static void pkvm_set_dr7(struct kvm_vcpu *vcpu, unsigned long val)
 		pkvm_hypercall(set_dr7, val);
 }
 
+static void pkvm_sync_dirty_debug_regs(struct kvm_vcpu *vcpu) {}
+
 static void pkvm_cache_reg(struct kvm_vcpu *vcpu, enum kvm_reg reg)
 {
 	union pkvm_hc_data out;
@@ -1248,6 +1252,11 @@ static void pkvm_flush_tlb_guest(struct kvm_vcpu *vcpu)
 {
 	if (!vcpu->arch.guest_state_protected)
 		pkvm_hypercall(flush_tlb_guest);
+}
+
+static int pkvm_vcpu_pre_run(struct kvm_vcpu *vcpu)
+{
+	return 1;
 }
 
 void vmx_do_nmi_irqoff(void);
@@ -1723,6 +1732,14 @@ static struct kvm_x86_nested_ops pkvm_nested_ops = {
 	.write_log_dirty = pkvm_nested_write_pml_buffer,
 };
 
+static int pkvm_check_intercept(struct kvm_vcpu *vcpu,
+				struct x86_instruction_info *info,
+				enum x86_intercept_stage stage,
+				struct x86_exception *exception)
+{
+	return X86EMUL_UNHANDLEABLE;
+}
+
 static void pkvm_setup_mce(struct kvm_vcpu *vcpu)
 {
 	pkvm_hypercall(setup_mce, vcpu->arch.mcg_cap);
@@ -1819,6 +1836,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.vcpu_free = pkvm_vcpu_free,
 	.vcpu_reset = pkvm_vcpu_reset,
 
+	.prepare_switch_to_guest = pkvm_prepare_switch_to_guest,
 	.vcpu_load = pkvm_vcpu_load,
 	.vcpu_put = pkvm_vcpu_put,
 
@@ -1843,6 +1861,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.get_gdt = pkvm_get_gdt,
 	.set_gdt = pkvm_set_gdt,
 	.set_dr7 = pkvm_set_dr7,
+	.sync_dirty_debug_regs = pkvm_sync_dirty_debug_regs,
 	.cache_reg = pkvm_cache_reg,
 	.get_rflags = pkvm_get_rflags,
 	.set_rflags = pkvm_set_rflags,
@@ -1853,6 +1872,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.flush_tlb_gva = pkvm_flush_tlb_gva,
 	.flush_tlb_guest = pkvm_flush_tlb_guest,
 
+	.vcpu_pre_run = pkvm_vcpu_pre_run,
 	.vcpu_run = pkvm_vcpu_run,
 	.handle_exit = pkvm_handle_exit,
 	.skip_emulated_instruction = pkvm_skip_emulated_instruction,
@@ -1898,6 +1918,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 
 	.load_mmu_pgd = pkvm_load_mmu_pgd,
 
+	.check_intercept = pkvm_check_intercept,
 	.handle_exit_irqoff = vmx_handle_exit_irqoff,
 
 	.nested_ops = &pkvm_nested_ops,

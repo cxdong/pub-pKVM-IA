@@ -15,6 +15,7 @@ static unsigned short has_wbinvd_exit = USHRT_MAX;
 static bool pkvm_has_vmx_wbinvd_exit(void);
 static int pkvm_check_emulate_instruction(struct kvm_vcpu *vcpu, int emul_type,
 					  void *insn, int insn_len);
+static int vmx_get_msr_imm_reg(struct kvm_vcpu *vcpu);
 
 static void pkvm_free_loaded_vmcs(struct loaded_vmcs *loaded_vmcs)
 {
@@ -134,6 +135,9 @@ static fastpath_t pkvm_exit_handlers_fastpath(struct kvm_vcpu *vcpu)
 	switch (vmx_get_exit_reason(vcpu).basic) {
 	case EXIT_REASON_MSR_WRITE:
 		return handle_fastpath_wrmsr(vcpu);
+	case EXIT_REASON_MSR_WRITE_IMM:
+		return handle_fastpath_wrmsr_imm(vcpu, vmx_get_exit_qual(vcpu),
+						 vmx_get_msr_imm_reg(vcpu));
 	default:
 		return EXIT_FASTPATH_NONE;
 	}

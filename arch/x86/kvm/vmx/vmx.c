@@ -6665,7 +6665,6 @@ static int handle_notify(struct kvm_vcpu *vcpu)
 #endif
 }
 
-#ifndef __PKVM_HYP__
 static int vmx_get_msr_imm_reg(struct kvm_vcpu *vcpu)
 {
 	return vmx_get_instr_info_reg(vmcs_read32(VMX_INSTRUCTION_INFO));
@@ -6682,7 +6681,6 @@ static int handle_wrmsr_imm(struct kvm_vcpu *vcpu)
 	return kvm_emulate_wrmsr_imm(vcpu, vmx_get_exit_qual(vcpu),
 				     vmx_get_msr_imm_reg(vcpu));
 }
-#endif /* !__PKVM_HYP__ */
 
 #ifdef __PKVM_HYP__
 static int handle_init(struct kvm_vcpu *vcpu)
@@ -6777,10 +6775,9 @@ static int (*kvm_vmx_exit_handlers[])(struct kvm_vcpu *vcpu) = {
 	[EXIT_REASON_NOTIFY]		      = handle_notify,
 	[EXIT_REASON_SEAMCALL]		      = handle_tdx_instruction,
 	[EXIT_REASON_TDCALL]		      = handle_tdx_instruction,
-#ifndef __PKVM_HYP__
 	[EXIT_REASON_MSR_READ_IMM]            = handle_rdmsr_imm,
 	[EXIT_REASON_MSR_WRITE_IMM]           = handle_wrmsr_imm,
-#else
+#ifdef __PKVM_HYP__
 	[EXIT_REASON_INIT_SIGNAL]	      = handle_init,
 #endif
 };
@@ -9681,6 +9678,21 @@ static void update_protected_vcpu_state(struct kvm_vcpu *vcpu,
 		WARN_ON_ONCE(kvm_complete_insn_gp(vcpu,
 				xchg(&to_pkvm_vcpu(vcpu)->host_emulated_msr_err, 0)) != 1);
 		break;
+	case EXIT_REASON_MSR_READ_IMM:
+	case EXIT_REASON_MSR_WRITE_IMM:
+		if (!pkvm_host_has_emulated_msr(vcpu->kvm, vmx_get_exit_qual(vcpu)))
+			to_pkvm_vcpu(vcpu)->host_emulated_msr_err = 1;
+
+		if (vmx_get_exit_reason(vcpu).basic == EXIT_REASON_MSR_READ_IMM &&
+		    !to_pkvm_vcpu(vcpu)->host_emulated_msr_err) {
+			int reg = vmx_get_msr_imm_reg(vcpu);
+
+			kvm_register_write(vcpu, reg, shared_vcpu->arch.regs[reg]);
+		}
+
+		WARN_ON_ONCE(kvm_complete_insn_gp(vcpu,
+				xchg(&to_pkvm_vcpu(vcpu)->host_emulated_msr_err, 0)) != 1);
+		break;
 	default:
 		break;
 	}
@@ -9732,6 +9744,11 @@ static void share_nonprotected_vcpu_state(struct kvm_vcpu *vcpu,
 		/* For the host to skip the instruction for certain exit reasons */
 		shared_vcpu->arch.event_exit_inst_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
 		break;
+	case EXIT_REASON_MSR_READ_IMM:
+	case EXIT_REASON_MSR_WRITE_IMM:
+		to_vmx(shared_vcpu)->instr_info = vmcs_read32(VMX_INSTRUCTION_INFO);
+		shared_vcpu->arch.event_exit_inst_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
+		break;
 	}
 	default:
 		break;
@@ -9755,6 +9772,16 @@ static void share_protected_vcpu_state(struct kvm_vcpu *vcpu,
 		break;
 	case EXIT_REASON_EPT_VIOLATION:
 		to_vmx(shared_vcpu)->exit_gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+		break;
+	case EXIT_REASON_MSR_WRITE_IMM: {
+		int reg = vmx_get_msr_imm_reg(vcpu);
+
+		shared_vcpu->arch.regs[reg] = kvm_register_read(vcpu, reg);
+		fallthrough;
+	}
+	case EXIT_REASON_MSR_READ_IMM:
+		shared_vcpu->arch.regs[VCPU_REGS_RCX] = kvm_rcx_read(vcpu);
+		to_vmx(shared_vcpu)->instr_info = vmcs_read32(VMX_INSTRUCTION_INFO);
 		break;
 	default:
 		break;

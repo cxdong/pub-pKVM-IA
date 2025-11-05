@@ -213,6 +213,8 @@ static void handle_xsetbv(struct kvm_vcpu *vcpu)
 
 	asm volatile(".byte 0x0f,0x01,0xd1"
 			: : "a" (eax), "d" (edx), "c" (ecx));
+
+	kvm_host.xcr0 = kvm_read_edx_eax(vcpu);
 }
 
 static void inject_pending_nmi(struct kvm_vcpu *vcpu)

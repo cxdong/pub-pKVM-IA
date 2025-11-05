@@ -534,6 +534,16 @@ static int pkvm_vcpu_load(int vm_handle, int vcpu_handle)
 		 */
 		BUG_ON(pkvm_vcpu != pkvm_get_vcpu(vm_handle, vcpu_handle));
 
+		/*
+		 * Save the pkru and xss used by the host for the pKVM
+		 * hypervisor to switch with the guest. xcr0 is also needed
+		 * but it is already updated when handling the xsetbv exit
+		 * for the host.
+		 */
+		vcpu->arch.host_pkru = read_pkru();
+		if (boot_cpu_has(X86_FEATURE_XSAVES))
+			rdmsrq(MSR_IA32_XSS, kvm_host.xss);
+
 		this_cpu_write(cur_guest_vcpu, vcpu);
 	} else if (loaded_cpu == cpu) {
 		/* The guest vCPU is already loaded on this CPU. */

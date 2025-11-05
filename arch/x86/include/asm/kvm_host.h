@@ -1998,6 +1998,7 @@ void __init pkvm_reserve(void);
 void pkvm_init_debugfs(void);
 #else
 static inline void __init pkvm_reserve(void) {}
+#define enable_pkvm		false
 #endif
 
 #define kvm_x86_call(func) static_call(kvm_x86_##func)

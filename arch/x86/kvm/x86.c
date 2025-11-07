@@ -14708,6 +14708,14 @@ int pkvm_vcpu_enter_guest(struct kvm_vcpu *vcpu, bool force_immediate_exit,
 	struct pkvm_vcpu *pkvm_vcpu = to_pkvm_vcpu(vcpu);
 	int i, ret;
 
+	/*
+	 * Flush predictor when switching from host VM to pVM to prevent host VM
+	 * from attacking pVM. This is not needed if switch from host VM to npVM
+	 * as host VM is in npVM's trust boundary.
+	 */
+	if (static_branch_likely(&switch_vcpu_ibpb) && pkvm_is_protected_vcpu(vcpu))
+		indirect_branch_prediction_barrier();
+
 	pkvm_vcpu->reqs_to_host = 0;
 
 	vcpu->arch.last_vmentry_cpu = vcpu->cpu;
@@ -14739,6 +14747,13 @@ int pkvm_vcpu_enter_guest(struct kvm_vcpu *vcpu, bool force_immediate_exit,
 	kvm_restore_user_return_msr();
 
 	*reqs_to_host = pkvm_vcpu->reqs_to_host;
+
+	/*
+	 * Flush predictor when switching from any guest VM (either npVM or pVM)
+	 * to host VM, to prevent guest VM from attacking host VM.
+	 */
+	if (static_branch_likely(&switch_vcpu_ibpb))
+		indirect_branch_prediction_barrier();
 
 	return ret;
 }

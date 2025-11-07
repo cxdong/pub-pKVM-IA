@@ -10,7 +10,7 @@ static unsigned long base;
 static unsigned long end;
 static unsigned long cur;
 
-static pkvm_spinlock_t early_lock = __PKVM_SPINLOCK_UNLOCKED;
+static DEFINE_PKVM_SPINLOCK(early_lock);
 
 void *pkvm_early_alloc_contig(unsigned int nr_pages)
 {

@@ -14,6 +14,8 @@ typedef union pkvm_spinlock {
 
 #define __PKVM_SPINLOCK_UNLOCKED	((pkvm_spinlock_t){ .__val = 0 })
 
+#define DEFINE_PKVM_SPINLOCK(x)		pkvm_spinlock_t x = __PKVM_SPINLOCK_UNLOCKED
+
 #define pkvm_spin_lock_init(l)		(*(l) = __PKVM_SPINLOCK_UNLOCKED)
 
 static inline void pkvm_spin_lock(pkvm_spinlock_t *lock)

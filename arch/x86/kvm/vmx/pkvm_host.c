@@ -823,6 +823,11 @@ static void pkvm_enable_irq_window(struct kvm_vcpu *vcpu)
 	pkvm_hypercall(enable_irq_window);
 }
 
+static void pkvm_update_cr8_intercept(struct kvm_vcpu *vcpu, int tpr, int irr)
+{
+	pkvm_hypercall(update_cr8_intercept, tpr, irr);
+}
+
 struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -889,6 +894,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.set_nmi_mask = pkvm_set_nmi_mask,
 	.enable_nmi_window = pkvm_enable_nmi_window,
 	.enable_irq_window = pkvm_enable_irq_window,
+	.update_cr8_intercept = pkvm_update_cr8_intercept,
 };
 
 bool pkvm_interrupt_blocked(struct kvm_vcpu *vcpu)

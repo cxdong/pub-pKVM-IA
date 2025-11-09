@@ -81,6 +81,41 @@ static void pkvm_disable_virtualization_cpu(void)
 	 */
 }
 
+static bool pkvm_has_emulated_msr(struct kvm *kvm, u32 index)
+{
+	switch (index) {
+	case MSR_KVM_WALL_CLOCK:
+	case MSR_KVM_WALL_CLOCK_NEW:
+	case MSR_KVM_SYSTEM_TIME:
+	case MSR_KVM_SYSTEM_TIME_NEW:
+	case MSR_KVM_ASYNC_PF_EN:
+	case MSR_KVM_ASYNC_PF_INT:
+	case MSR_KVM_ASYNC_PF_ACK:
+	case MSR_KVM_STEAL_TIME:
+	case MSR_KVM_PV_EOI_EN:
+	case MSR_KVM_POLL_CONTROL:
+	case MSR_IA32_U_CET:
+	case MSR_IA32_PL0_SSP ... MSR_IA32_PL3_SSP:
+		if (kvm && pkvm_is_protected_vm(kvm))
+			return false;
+		fallthrough;
+	case MSR_IA32_TSC_ADJUST:
+	case MSR_IA32_TSC:
+	case MSR_IA32_APICBASE:
+	case APIC_BASE_MSR ... APIC_BASE_MSR + 0xff:
+	case MSR_IA32_TSC_DEADLINE:
+		return true;
+	default:
+		/*
+		 * All other emulated MSRs are directly emulated by the pKVM
+		 * hypervisor.
+		 */
+		break;
+	}
+
+	return false;
+}
+
 static int pkvm_vm_init(struct kvm *kvm)
 {
 	void *pkvm_vm;
@@ -232,6 +267,17 @@ static void pkvm_update_exception_bitmap(struct kvm_vcpu *vcpu)
 		pkvm_hypercall(update_exception_bitmap);
 }
 
+static int pkvm_set_msr(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
+{
+	if (pkvm_has_emulated_msr(vcpu->kvm, msr_info->index))
+		return kvm_set_msr_common(vcpu, msr_info);
+
+	if (!vcpu->arch.guest_state_protected)
+		return pkvm_hypercall(set_msr, msr_info->index, msr_info->data);
+
+	return -EPERM;
+}
+
 static int pkvm_set_efer(struct kvm_vcpu *vcpu, u64 efer)
 {
 	int ret = -EINVAL;
@@ -252,6 +298,8 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.disable_virtualization_cpu = pkvm_disable_virtualization_cpu,
 	.emergency_disable_virtualization_cpu = pkvm_disable_virtualization_cpu,
 
+	.has_emulated_msr = pkvm_has_emulated_msr,
+
 	.vm_size = sizeof(struct kvm_vmx),
 	.vm_init = pkvm_vm_init,
 	.vm_destroy = pkvm_vm_destroy,
@@ -264,6 +312,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.vcpu_put = pkvm_vcpu_put,
 
 	.update_exception_bitmap = pkvm_update_exception_bitmap,
+	.set_msr = pkvm_set_msr,
 	.set_efer = pkvm_set_efer,
 };
 

@@ -833,6 +833,11 @@ static void pkvm_load_eoi_exitmap(struct kvm_vcpu *vcpu, u64 *eoi_exit_bitmap)
 	 BIT(APICV_INHIBIT_REASON_APIC_ID_MODIFIED) |		\
 	 BIT(APICV_INHIBIT_REASON_APIC_BASE_MODIFIED))
 
+static void pkvm_hwapic_isr_update(struct kvm_vcpu *vcpu, int max_isr)
+{
+	pkvm_hypercall(hwapic_isr_update, max_isr);
+}
+
 struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -906,6 +911,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.load_eoi_exitmap = pkvm_load_eoi_exitmap,
 	.apicv_pre_state_restore = pi_apicv_pre_state_restore,
 	.required_apicv_inhibits = VMX_REQUIRED_APICV_INHIBITS,
+	.hwapic_isr_update = pkvm_hwapic_isr_update,
 };
 
 bool pkvm_interrupt_blocked(struct kvm_vcpu *vcpu)

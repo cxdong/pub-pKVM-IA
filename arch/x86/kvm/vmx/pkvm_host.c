@@ -838,6 +838,46 @@ static void pkvm_hwapic_isr_update(struct kvm_vcpu *vcpu, int max_isr)
 	pkvm_hypercall(hwapic_isr_update, max_isr);
 }
 
+static int pkvm_sync_pir_to_irr(struct kvm_vcpu *vcpu)
+{
+	struct vcpu_vt *vt = to_vt(vcpu);
+	bool got_posted_interrupt;
+	int max_irr;
+
+	if (KVM_BUG_ON(!enable_apicv, vcpu->kvm))
+		return -EIO;
+
+	if (pi_test_on(&vt->pi_desc)) {
+		pi_clear_on(&vt->pi_desc);
+		/*
+		 * IOMMU can write to PID.ON, so the barrier matters even on UP.
+		 * But on x86 this is just a compiler barrier anyway.
+		 */
+		smp_mb__after_atomic();
+		got_posted_interrupt =
+			kvm_apic_update_irr(vcpu, vt->pi_desc.pir, &max_irr);
+	} else {
+		max_irr = kvm_lapic_find_highest_irr(vcpu);
+		got_posted_interrupt = false;
+	}
+
+	/*
+	 * Newly recognized interrupts are injected via either virtual interrupt
+	 * delivery (RVI) or KVM_REQ_EVENT.  Virtual interrupt delivery is
+	 * disabled in below case:
+	 *
+	 * 1) If APICv is disabled for this vCPU, assigned devices may still
+	 * attempt to post interrupts.  The posted interrupt vector will cause
+	 * a VM-Exit and the subsequent entry will call sync_pir_to_irr.
+	 */
+	if (kvm_vcpu_apicv_active(vcpu) && max_irr != -1)
+		pkvm_hypercall(sync_pir_to_irr, max_irr);
+	else if (got_posted_interrupt)
+		kvm_make_request(KVM_REQ_EVENT, vcpu);
+
+	return max_irr;
+}
+
 struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.name = KBUILD_MODNAME,
 
@@ -912,6 +952,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.apicv_pre_state_restore = pi_apicv_pre_state_restore,
 	.required_apicv_inhibits = VMX_REQUIRED_APICV_INHIBITS,
 	.hwapic_isr_update = pkvm_hwapic_isr_update,
+	.sync_pir_to_irr = pkvm_sync_pir_to_irr,
 };
 
 bool pkvm_interrupt_blocked(struct kvm_vcpu *vcpu)

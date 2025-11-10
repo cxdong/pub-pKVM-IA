@@ -39,7 +39,7 @@ struct task_struct;
 					      struct task_struct *idle) {}
 #endif
 
-#ifdef CONFIG_TRACE_IRQFLAGS
+#if defined(CONFIG_TRACE_IRQFLAGS) && !defined(__PKVM_HYP__)
 
 DECLARE_PER_CPU(int, hardirqs_enabled);
 DECLARE_PER_CPU(int, hardirq_context);
@@ -127,7 +127,7 @@ do {						\
 # define lockdep_irq_work_exit(__work)		do { } while (0)
 #endif
 
-#if defined(CONFIG_TRACE_IRQFLAGS) && !defined(CONFIG_PREEMPT_RT)
+#if defined(CONFIG_TRACE_IRQFLAGS) && !defined(CONFIG_PREEMPT_RT) && !defined(__PKVM_HYP__)
 # define lockdep_softirq_enter()		\
 do {						\
 	current->softirq_context++;		\

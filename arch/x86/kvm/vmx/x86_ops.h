@@ -159,4 +159,8 @@ void tdx_load_mmu_pgd(struct kvm_vcpu *vcpu, hpa_t root_hpa, int root_level);
 int tdx_gmem_max_mapping_level(struct kvm *kvm, kvm_pfn_t pfn, bool is_private);
 #endif
 
+#ifdef __PKVM_HYP__
+void pkvm_vmx_post_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3);
+#endif
+
 #endif /* __KVM_X86_VMX_X86_OPS_H */

@@ -1359,7 +1359,6 @@ void vmx_prepare_switch_to_guest(struct kvm_vcpu *vcpu)
 	vt->guest_state_loaded = true;
 }
 
-#ifndef __PKVM_HYP__
 static void vmx_prepare_switch_to_host(struct vcpu_vmx *vmx)
 {
 	struct vmcs_host_state *host_state;
@@ -1376,10 +1375,21 @@ static void vmx_prepare_switch_to_host(struct vcpu_vmx *vmx)
 #endif
 	if (host_state->ldt_sel || (host_state->gs_sel & 7)) {
 		kvm_load_ldt(host_state->ldt_sel);
+#ifndef __PKVM_HYP__
 #ifdef CONFIG_X86_64
 		load_gs_index(host_state->gs_sel);
 #else
 		loadsegment(gs, host_state->gs_sel);
+#endif
+#else
+		/*
+		 * The GS selector which has cpl > 0 or TI == 1 cannot be loaded
+		 * via VMCS field. It can be loaded similarly with load_gs_index
+		 * which is not supported by the pKVM hypervisor. Thus the pKVM
+		 * hypervisor doesn't use such GS selector, unless it is a code
+		 * bug.
+		 */
+		BUG_ON(host_state->gs_sel & 7);
 #endif
 	}
 	if (host_state->fs_sel & 7)
@@ -1390,15 +1400,18 @@ static void vmx_prepare_switch_to_host(struct vcpu_vmx *vmx)
 		loadsegment(es, host_state->es_sel);
 	}
 #endif
+#ifndef __PKVM_HYP__
 	invalidate_tss_limit();
+#endif
 #ifdef CONFIG_X86_64
 	wrmsrq(MSR_KERNEL_GS_BASE, vmx->vt.msr_host_kernel_gs_base);
 #endif
+#ifndef __PKVM_HYP__
 	load_fixmap_gdt(raw_smp_processor_id());
+#endif
 	vmx->vt.guest_state_loaded = false;
 	vmx->guest_uret_msrs_loaded = false;
 }
-#endif /* !__PKVM_HYP__ */
 
 #ifdef CONFIG_X86_64
 static u64 vmx_read_guest_host_msr(struct vcpu_vmx *vmx, u32 msr, u64 *cache)
@@ -9319,6 +9332,11 @@ void pkvm_vmx_post_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
 {
 	vcpu->arch.cr3 = cr3;
 	kvm_register_mark_dirty(vcpu, VCPU_EXREG_CR3);
+}
+
+void pkvm_vmx_prepare_switch_to_host(struct kvm_vcpu *vcpu)
+{
+	vmx_prepare_switch_to_host(to_vmx(vcpu));
 }
 
 int pkvm_vmx_init(void)

@@ -1249,6 +1249,7 @@ static void pt_guest_exit(struct vcpu_vmx *vmx)
 	if (vmx->pt_desc.host.ctl)
 		wrmsrq(MSR_IA32_RTIT_CTL, vmx->pt_desc.host.ctl);
 }
+#endif /* !__PKVM_HYP__ */
 
 void vmx_set_host_fs_gs(struct vmcs_host_state *host, u16 fs_sel, u16 gs_sel,
 			unsigned long fs_base, unsigned long gs_base)
@@ -1282,7 +1283,7 @@ void vmx_prepare_switch_to_guest(struct kvm_vcpu *vcpu)
 	struct vcpu_vmx *vmx = to_vmx(vcpu);
 	struct vcpu_vt *vt = to_vt(vcpu);
 	struct vmcs_host_state *host_state;
-#ifdef CONFIG_X86_64
+#if defined(CONFIG_X86_64) && !defined(__PKVM_HYP__)
 	int cpu = raw_smp_processor_id();
 #endif
 	unsigned long fs_base, gs_base;
@@ -1324,6 +1325,7 @@ void vmx_prepare_switch_to_guest(struct kvm_vcpu *vcpu)
 	savesegment(ds, host_state->ds_sel);
 	savesegment(es, host_state->es_sel);
 
+#ifndef __PKVM_HYP__
 	gs_base = cpu_kernelmode_gs_base(cpu);
 	if (likely(is_64bit_mm(current->mm))) {
 		current_save_fsgs();
@@ -1337,6 +1339,13 @@ void vmx_prepare_switch_to_guest(struct kvm_vcpu *vcpu)
 		fs_base = read_msr(MSR_FS_BASE);
 		vt->msr_host_kernel_gs_base = read_msr(MSR_KERNEL_GS_BASE);
 	}
+#else
+	savesegment(fs, fs_sel);
+	savesegment(gs, gs_sel);
+	fs_base = read_msr(MSR_FS_BASE);
+	gs_base = read_msr(MSR_GS_BASE);
+	vt->msr_host_kernel_gs_base = read_msr(MSR_KERNEL_GS_BASE);
+#endif
 
 	wrmsrq(MSR_KERNEL_GS_BASE, vmx->msr_guest_kernel_gs_base);
 #else
@@ -1350,6 +1359,7 @@ void vmx_prepare_switch_to_guest(struct kvm_vcpu *vcpu)
 	vt->guest_state_loaded = true;
 }
 
+#ifndef __PKVM_HYP__
 static void vmx_prepare_switch_to_host(struct vcpu_vmx *vmx)
 {
 	struct vmcs_host_state *host_state;

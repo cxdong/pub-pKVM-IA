@@ -9250,6 +9250,12 @@ err_l1d_flush:
 
 #else /* !__PKVM_HYP__ */
 
+void pkvm_vmx_post_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
+{
+	vcpu->arch.cr3 = cr3;
+	kvm_register_mark_dirty(vcpu, VCPU_EXREG_CR3);
+}
+
 int pkvm_vmx_init(void)
 {
 	BUILD_BUG_ON(offsetof(struct kvm_vmx, kvm) != 0);

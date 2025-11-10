@@ -913,6 +913,9 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.is_valid_cr0 = vt_op(is_valid_cr0),
 	.set_cr0 = vt_op(set_cr0),
 #endif
+#ifdef __PKVM_HYP__
+	.post_set_cr3 = pkvm_vmx_post_set_cr3,
+#endif
 	.is_valid_cr4 = vt_op(is_valid_cr4),
 	.set_cr4 = vt_op(set_cr4),
 	.set_efer = vt_op(set_efer),

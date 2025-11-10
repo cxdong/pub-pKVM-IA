@@ -1013,7 +1013,9 @@ struct kvm_x86_ops vt_x86_ops __initdata = {
 	.cancel_hv_timer = vt_op(cancel_hv_timer),
 #endif
 
+#endif
 	.setup_mce = vt_op(setup_mce),
+#ifndef __PKVM_HYP__
 
 #ifdef CONFIG_KVM_SMM
 	.smi_allowed = vt_op(smi_allowed),

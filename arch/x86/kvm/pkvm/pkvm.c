@@ -1170,6 +1170,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 	case __pkvm__load_mmu_pgd:
 		pkvm_load_mmu_pgd(vcpu, pkvm_hc_input1(hvcpu), pkvm_hc_input2(hvcpu));
 		break;
+	case __pkvm__setup_mce:
+		ret = kvm_vcpu_x86_setup_mce(vcpu, pkvm_hc_input1(hvcpu));
+		break;
 	default:
 		ret = -EINVAL;
 		break;

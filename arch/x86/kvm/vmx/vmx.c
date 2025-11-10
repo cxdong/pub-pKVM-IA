@@ -7576,6 +7576,7 @@ static void vmx_update_hv_timer(struct kvm_vcpu *vcpu, bool force_immediate_exit
 		vmx->loaded_vmcs->hv_timer_soft_disabled = true;
 	}
 }
+#endif /* !__PKVM_HYP__ */
 
 void noinstr vmx_update_host_rsp(struct vcpu_vmx *vmx, unsigned long host_rsp)
 {
@@ -7584,7 +7585,6 @@ void noinstr vmx_update_host_rsp(struct vcpu_vmx *vmx, unsigned long host_rsp)
 		vmcs_writel(HOST_RSP, host_rsp);
 	}
 }
-#endif /* !__PKVM_HYP__ */
 
 void noinstr vmx_spec_ctrl_restore_host(struct vcpu_vmx *vmx,
 					unsigned int flags)

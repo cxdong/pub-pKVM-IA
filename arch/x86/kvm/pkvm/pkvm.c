@@ -17,13 +17,13 @@ struct pkvm_hyp *pkvm_hyp;
 DEFINE_PER_CPU(struct pkvm_pcpu *, phys_cpu);
 DEFINE_PER_CPU(struct kvm_vcpu *, host_vcpu);
 
-int pkvm_handle_kvm_call(unsigned long func, unsigned long a0,
-			 unsigned long a1, unsigned long a2,
-			 unsigned long a3)
+int pkvm_handle_host_hypercall(unsigned long nr, unsigned long a0,
+			       unsigned long a1, unsigned long a2,
+			       unsigned long a3)
 {
 	int ret;
 
-	switch (func) {
+	switch (nr) {
 	case __pkvm__init_finalize:
 		ret = pkvm_init_finalize((struct pkvm_mem_info *)a0, a1,
 					 (struct pkvm_init_ops *)a2);

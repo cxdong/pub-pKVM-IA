@@ -50,34 +50,34 @@ struct pkvm_mem_info {
 	u64 prot;
 };
 
-enum pkvm_fn {
+enum pkvm_hc {
 	__pkvm__init_finalize,
 };
 
-#define __kvm_call_pkvm_0(f)		kvm_hypercall4(f, 0, 0, 0, 0)
-#define __kvm_call_pkvm_1(f, p1)							\
+#define __pkvm_hypercall_0(f)		kvm_hypercall4(f, 0, 0, 0, 0)
+#define __pkvm_hypercall_1(f, p1)							\
 	({										\
 		kvm_hypercall4(f, (unsigned long)(p1), 0, 0, 0);			\
 	})
-#define __kvm_call_pkvm_2(f, p1, p2)							\
+#define __pkvm_hypercall_2(f, p1, p2)							\
 	({										\
 		kvm_hypercall4(f, (unsigned long)(p1), (unsigned long)(p2), 0, 0);	\
 	})
-#define __kvm_call_pkvm_3(f, p1, p2, p3)						\
+#define __pkvm_hypercall_3(f, p1, p2, p3)						\
 	({										\
 		kvm_hypercall4(f, (unsigned long)(p1), (unsigned long)(p2),		\
 			       (unsigned long)(p3), 0);					\
 	})
-#define __kvm_call_pkvm_4(f, p1, p2, p3, p4)						\
+#define __pkvm_hypercall_4(f, p1, p2, p3, p4)						\
 	({										\
 		kvm_hypercall4(f, (unsigned long)(p1), (unsigned long)(p2),		\
 			       (unsigned long)(p3), (unsigned long)(p4));		\
 	})
-#define CALL_PKVM(f)		CONCATENATE(__pkvm__, f)
-#define kvm_call_pkvm(f, ...)								\
+#define PKVM_HC(f)		CONCATENATE(__pkvm__, f)
+#define pkvm_hypercall(f, ...)								\
 	({										\
-		CONCATENATE(__kvm_call_pkvm_,						\
-			    COUNT_ARGS(__VA_ARGS__))(CALL_PKVM(f), ##__VA_ARGS__);	\
+		CONCATENATE(__pkvm_hypercall_,						\
+			    COUNT_ARGS(__VA_ARGS__))(PKVM_HC(f), ##__VA_ARGS__);	\
 	})
 
 extern unsigned long pkvm_sym(page_offset_base);

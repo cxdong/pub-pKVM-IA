@@ -321,6 +321,7 @@ static int __vcpu_create(struct kvm *kvm, struct kvm_vcpu *vcpu, struct fpstate 
 {
 	struct pkvm_vcpu *pkvm_vcpu = to_pkvm_vcpu(vcpu);
 	int ret = kvm_x86_call(vcpu_precreate)(kvm);
+	int cpu = raw_smp_processor_id();
 
 	if (ret)
 		return ret;
@@ -357,10 +358,26 @@ static int __vcpu_create(struct kvm *kvm, struct kvm_vcpu *vcpu, struct fpstate 
 	}
 
 	ret = kvm_x86_call(vcpu_create)(vcpu);
-	if (ret)
+	if (ret) {
 		unsetup_vcpu_lapic(vcpu);
+		return ret;
+	}
 
-	return ret;
+	/*
+	 * Load guest vCPU to reset. The guest vCPU should be put before
+	 * switching back to the host vCPU to make sure the vcpu state is not
+	 * cached on this CPU as this guest vCPU may be loaded on another CPU
+	 * later by the host via the PV interface.
+	 */
+	kvm_x86_call(vcpu_load)(vcpu, cpu);
+
+	kvm_vcpu_reset(vcpu, false);
+
+	kvm_x86_call(vcpu_put)(vcpu);
+
+	kvm_x86_call(vcpu_load)(this_cpu_read(host_vcpu), cpu);
+
+	return 0;
 }
 
 static void __vcpu_free(struct kvm_vcpu *vcpu)

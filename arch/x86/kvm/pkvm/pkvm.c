@@ -31,6 +31,11 @@ bool tdp_enabled = true;
 struct pkvm_hyp *pkvm_hyp;
 DEFINE_PER_CPU(struct pkvm_pcpu *, phys_cpu);
 DEFINE_PER_CPU(struct kvm_vcpu *, host_vcpu);
+/*
+ * similarly pmu.c is not compiled. define kvm_mmu_cap here for the use
+ * in cpuid.c
+ */
+struct x86_pmu_capability __read_mostly kvm_pmu_cap = {0};
 
 /* The maximum number of VMs under pkvm. */
 #define MAX_PKVM_VMS		64
@@ -870,14 +875,17 @@ static int pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu,
 		return ret;
 
 	new = __pkvm_va(cpuid_pa);
+	if (pkvm_is_protected_vcpu(vcpu) && pkvm_enforce_cpuid(new, new_nent)) {
+		ret = -EPERM;
+		goto undonate;
+	}
+
 	old = vcpu->arch.cpuid_entries;
 	old_nent = vcpu->arch.cpuid_nent;
 
 	ret = kvm_set_cpuid(vcpu, new, new_nent);
-	if (ret) {
-		pkvm_hyp_donate_host(__pkvm_pa(new), size, false);
-		return ret;
-	}
+	if (ret)
+		goto undonate;
 
 	memset(mc, 0, sizeof(*mc));
 	/*
@@ -890,6 +898,10 @@ static int pkvm_vcpu_after_set_cpuid(struct kvm_vcpu *vcpu,
 						   old_nent));
 
 	return 0;
+
+undonate:
+	pkvm_hyp_donate_host(__pkvm_pa(new), size, false);
+	return ret;
 }
 
 static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc hc,

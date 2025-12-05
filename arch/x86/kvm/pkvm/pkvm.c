@@ -562,6 +562,30 @@ static int pkvm_vcpu_put(int vm_handle, int vcpu_handle)
 	return ret;
 }
 
+static bool is_guest_vcpu_accessible(struct kvm_vcpu *vcpu, enum pkvm_hc hc)
+{
+	/*
+	 * There is no isolation between non-protected VMs and the host, thus
+	 * it is not necessary to audit any PV interfaces for an npVM.
+	 */
+	if (!pkvm_is_protected_vcpu(vcpu))
+		return true;
+
+	switch (hc) {
+	case __pkvm__update_exception_bitmap:
+		/*
+		 * As the host needs to pre-configure the pVM's vCPU state for
+		 * booting, the protection for pVM is only enforced by the pKVM
+		 * hypervisor once the vCPU has started running.
+		 */
+		return !kvm_vcpu_has_run(vcpu);
+	default:
+		break;
+	}
+
+	return true;
+}
+
 static void pkvm_update_exception_bitmap(struct kvm_vcpu *vcpu)
 {
 	/*
@@ -584,6 +608,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 
 	if (!vcpu || hvcpu != this_cpu_read(host_vcpu))
 		return -EINVAL;
+
+	if (!is_guest_vcpu_accessible(vcpu, hc))
+		return -EPERM;
 
 	kvm_x86_call(vcpu_load)(vcpu, cpu);
 

@@ -845,6 +845,12 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 	case __pkvm__get_interrupt_shadow:
 		out->get_interrupt_shadow.data = kvm_x86_call(get_interrupt_shadow)(vcpu);
 		break;
+	case __pkvm__enable_nmi_window:
+		kvm_x86_call(enable_nmi_window)(vcpu);
+		break;
+	case __pkvm__enable_irq_window:
+		kvm_x86_call(enable_irq_window)(vcpu);
+		break;
 	default:
 		ret = -EINVAL;
 		break;

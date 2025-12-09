@@ -10,6 +10,7 @@
  * disabled. (This list needs to be extended when new variants are added.)
  */
 #undef CONFIG_PRINTK
+#undef CONFIG_CALL_THUNKS_DEBUG
 
 /*
  * Avoid undefining the below options, as it would change the layout of some

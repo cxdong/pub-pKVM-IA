@@ -545,6 +545,9 @@ int pkvm_x86_vendor_init(struct kvm_x86_init_ops *ops)
 		kvm_caps.supported_xss = kvm_host.xss & KVM_SUPPORTED_XSS;
 	}
 
+	kvm_caps.supported_quirks = KVM_X86_VALID_QUIRKS;
+	kvm_caps.inapplicable_quirks = KVM_X86_CONDITIONAL_QUIRKS;
+
 	rdmsrq_safe(MSR_EFER, &kvm_host.efer);
 
 	if (boot_cpu_has(X86_FEATURE_ARCH_CAPABILITIES))

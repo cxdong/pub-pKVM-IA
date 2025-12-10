@@ -116,6 +116,7 @@ out:
 static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
 {
 	struct pkvm_vm *pkvm_vm;
+	struct kvm *kvm;
 	size_t size;
 	u8 vm_type;
 	int ret;
@@ -132,6 +133,7 @@ static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
 	pkvm_vm = __pkvm_va(pkvm_vm_pa);
 	pkvm_vm->size = size;
 	pkvm_vm->shared_kvm = __pkvm_va(host_kvm_pa);
+	kvm = &pkvm_vm->kvm;
 
 	vm_type = pkvm_vm->shared_kvm->arch.vm_type;
 	if (!kvm_is_vm_type_supported(vm_type)) {
@@ -139,7 +141,10 @@ static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
 		goto undonate;
 	}
 
-	pkvm_vm->kvm.arch.vm_type = vm_type;
+	kvm->arch.vm_type = vm_type;
+	kvm->arch.disabled_quirks = (kvm_caps.inapplicable_quirks |
+				     pkvm_vm->shared_kvm->arch.disabled_quirks) &
+				    kvm_caps.supported_quirks;
 
 	pkvm_spin_lock_init(&pkvm_vm->lock);
 
@@ -147,13 +152,13 @@ static int pkvm_vm_init(phys_addr_t host_kvm_pa, phys_addr_t pkvm_vm_pa)
 	if (ret < 0)
 		goto undonate;
 
-	pkvm_vm->kvm.arch.pkvm.handle = ret;
+	kvm->arch.pkvm.handle = ret;
 
-	ret = kvm_x86_call(vm_init)(&pkvm_vm->kvm);
+	ret = kvm_x86_call(vm_init)(kvm);
 	if (ret)
 		goto free_handle;
 
-	return pkvm_vm->kvm.arch.pkvm.handle;
+	return kvm->arch.pkvm.handle;
 
 free_handle:
 	free_pkvm_vm_handle(pkvm_vm->kvm.arch.pkvm.handle);

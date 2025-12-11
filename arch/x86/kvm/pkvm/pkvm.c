@@ -406,6 +406,8 @@ static int __vcpu_create(struct kvm *kvm, struct kvm_vcpu *vcpu, struct fpstate 
 
 	kvm_vcpu_reset(vcpu, false);
 
+	pkvm_vcpu_perf_init(vcpu);
+
 	/*
 	 * The guest vCPU should be put before switching back to the host vCPU
 	 * to make sure the vcpu state is not cached on this CPU as this guest

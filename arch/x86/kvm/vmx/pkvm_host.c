@@ -1304,6 +1304,11 @@ static void pkvm_flush_tlb_guest(struct kvm_vcpu *vcpu)
 		pkvm_hypercall(flush_tlb_guest);
 }
 
+static int pkvm_vcpu_pre_run(struct kvm_vcpu *vcpu)
+{
+	return 1;
+}
+
 static fastpath_t pkvm_vcpu_run(struct kvm_vcpu *vcpu, u64 run_flags)
 {
 	bool force_immediate_exit = run_flags & KVM_RUN_FORCE_IMMEDIATE_EXIT;
@@ -1897,6 +1902,7 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.flush_tlb_gva = pkvm_flush_tlb_gva,
 	.flush_tlb_guest = pkvm_flush_tlb_guest,
 
+	.vcpu_pre_run = pkvm_vcpu_pre_run,
 	.vcpu_run = pkvm_vcpu_run,
 	.handle_exit = pkvm_handle_exit,
 	.skip_emulated_instruction = pkvm_skip_emulated_instruction,

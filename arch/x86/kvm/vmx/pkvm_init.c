@@ -704,7 +704,7 @@ static __init void init_guest_state_area_from_native(struct vcpu_vmx *vmx)
 	vmcs_write32(GUEST_IDTR_LIMIT, dt.size);
 
 	/* Set MSRs */
-	vmcs_write64(GUEST_IA32_DEBUGCTL, 0);
+	vmcs_write64(GUEST_IA32_DEBUGCTL, get_debugctlmsr());
 
 	rdmsrq(MSR_IA32_SYSENTER_CS, msrq);
 	vmcs_write32(GUEST_SYSENTER_CS, (u32)msrq);

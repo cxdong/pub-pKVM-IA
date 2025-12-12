@@ -39,6 +39,22 @@ static bool noinstr intel_cc_platform_has(enum cc_attr attr)
 	}
 }
 
+static bool noinstr pkvm_cc_platform_has(enum cc_attr attr)
+{
+	/*
+	 * CC_ATTR_GUEST_UNROLL_STRING_IO: Since string io cause KVM to do
+	 * instruction decode, to avoid it, using this attribute will unroll the
+	 * string io. For example, in <asm/io.h>, the definition of the outsb
+	 * check to attribute to determine if using string io.
+	 */
+	switch (attr) {
+	case CC_ATTR_GUEST_UNROLL_STRING_IO:
+		return true;
+	default:
+		return false;
+	}
+}
+
 /*
  * Handle the SEV-SNP vTOM case where sme_me_mask is zero, and
  * the other levels of SME/SEV functionality, including C-bit
@@ -122,6 +138,8 @@ bool noinstr cc_platform_has(enum cc_attr attr)
 		return amd_cc_platform_has(attr);
 	case CC_VENDOR_INTEL:
 		return intel_cc_platform_has(attr);
+	case CC_VENDOR_PKVM:
+		return pkvm_cc_platform_has(attr);
 	default:
 		return false;
 	}

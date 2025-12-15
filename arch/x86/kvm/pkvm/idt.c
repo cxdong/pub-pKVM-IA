@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/extable.h>
+#include <asm/processor.h>
 #include <asm/extable.h>
 #include <asm/pkvm_image.h>
 #include <asm/trapnr.h>

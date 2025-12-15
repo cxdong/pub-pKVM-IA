@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/kvm_host.h>
+#include <linux/extable.h>
 #include <asm/fpu/xstate.h>
 #include <asm/kvm_pkvm.h>
 #include "cpuid.h"
@@ -247,6 +248,9 @@ static int finalize_global(struct pkvm_mem_info infos[], int nr_infos,
 	 * guest VMs.
 	 */
 	kvm_init_xstate_sizes();
+
+	if (&__stop___ex_table > &__start___ex_table)
+		sort_extable(__start___ex_table, __stop___ex_table);
 
 	return hyp_g_finalize ? hyp_g_finalize() : 0;
 }

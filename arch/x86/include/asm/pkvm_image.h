@@ -48,6 +48,9 @@ extern char __pkvm_text_start[], __pkvm_text_end[];
 extern char __pkvm_rodata_start[], __pkvm_rodata_end[];
 extern char __pkvm_data_start[], __pkvm_data_end[];
 extern char __pkvm_bss_start[], __pkvm_bss_end[];
+struct exception_table_entry;
+extern struct exception_table_entry __start___ex_table[];
+extern struct exception_table_entry __stop___ex_table[];
 static inline bool is_pkvm_text(void *addr)
 {
 	return addr >= (void *)__pkvm_text_start && addr < (void *)__pkvm_text_end;

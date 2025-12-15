@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#include <linux/export.h>
 #include <linux/init.h>
 #include <linux/kvm_para.h>
 #include <asm/coco.h>
@@ -99,6 +100,9 @@ static void pkvm_mmio_writeq(u64 v, volatile void __iomem *addr)
 	pkvm_virt_mmio(8, true, (unsigned long)addr, &val);
 }
 
+DEFINE_STATIC_KEY_FALSE(pkvm_guest_detected);
+EXPORT_SYMBOL(pkvm_guest_detected);
+
 void __init pkvm_guest_init_coco(void)
 {
 	cc_vendor = CC_VENDOR_PKVM;
@@ -127,4 +131,6 @@ void __init pkvm_guest_init_coco(void)
 	pv_ops.mmio.pci_mmcfg_writeb = pkvm_mmio_writeb;
 	pv_ops.mmio.pci_mmcfg_writew = pkvm_mmio_writew;
 	pv_ops.mmio.pci_mmcfg_writel = pkvm_mmio_writel;
+
+	static_branch_enable(&pkvm_guest_detected);
 }

@@ -152,6 +152,9 @@ PHDRS {
 	__pkvm_rodata_start = .;					\
 	*(PKVM_SECTION_NAME(.rodata))					\
 	*(PKVM_SECTION_NAME(.data..ro_after_init))			\
+	pkvm_sym(__start___ex_table) = .;				\
+	*(PKVM_SECTION_NAME(__ex_table))				\
+	pkvm_sym(__stop___ex_table) = .;				\
 	. = ALIGN(PAGE_SIZE);						\
 	__pkvm_rodata_end = .;						\
 	}

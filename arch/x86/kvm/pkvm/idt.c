@@ -72,6 +72,7 @@ static bool ex_handler_default(const struct exception_table_entry *e,
 static bool ex_handler_msr(const struct exception_table_entry *fixup,
 			   struct pt_regs *regs, bool wrmsr, bool safe, int reg)
 {
+#ifdef CONFIG_PKVM_X86_DEBUG
 	if (__ONCE_LITE_IF(!safe && wrmsr)) {
 		pkvm_err("unchecked MSR access error: WRMSR to 0x%x (tried to write 0x%08x%08x) at rIP: 0x%lx (%pS)\n",
 			(unsigned int)regs->cx, (unsigned int)regs->dx,
@@ -82,6 +83,7 @@ static bool ex_handler_msr(const struct exception_table_entry *fixup,
 		pkvm_err("unchecked MSR access error: RDMSR from 0x%x at rIP: 0x%lx (%pS)\n",
 			(unsigned int)regs->cx, regs->ip, (void *)regs->ip);
 	}
+#endif
 
 	if (!wrmsr) {
 		/* Pretend that the read succeeded and returned 0. */

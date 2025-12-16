@@ -648,7 +648,7 @@ static __init void init_guest_state_area_from_native(void)
 {
 	int cpu = smp_processor_id();
 	struct desc_ptr dt;
-	unsigned long msrq;
+	u64 msrq;
 	u16 ldtr;
 
 	/* Initialize CR registers */
@@ -724,12 +724,13 @@ static __init void init_guest_state_area(void)
 static __init void init_host_state_area(struct vcpu_vmx *vmx, struct pkvm_hyp *pkvm)
 {
 	int cpu = smp_processor_id();
-	unsigned long host_rsp, msrq;
+	unsigned long host_rsp;
 	struct pkvm_pcpu *pcpu;
 #ifdef CONFIG_PKVM_X86_DEBUG
 	struct desc_ptr dt;
 	u16 selector;
 #endif
+	u64 msrq;
 
 	vmcs_writel(HOST_CR0, read_cr0() & ~X86_CR0_TS);
 	/* Use host cr3 until the pKVM hypervisor created its own MMU */

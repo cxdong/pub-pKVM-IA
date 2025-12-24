@@ -590,6 +590,7 @@ static bool is_guest_vcpu_accessible(struct kvm_vcpu *vcpu, enum pkvm_hc hc)
 	case __pkvm__set_msr:
 	case __pkvm__get_msr:
 	case __pkvm__set_cr4:
+	case __pkvm__set_cr0:
 		/*
 		 * As the host needs to pre-configure the pVM's vCPU state for
 		 * booting, the protection for pVM is only enforced by the pKVM
@@ -751,6 +752,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 		break;
 	case __pkvm__set_cr4:
 		kvm_x86_call(set_cr4)(vcpu, pkvm_hc_input1(hvcpu));
+		break;
+	case __pkvm__set_cr0:
+		kvm_x86_call(set_cr0)(vcpu, pkvm_hc_input1(hvcpu));
 		break;
 	default:
 		ret = -EINVAL;

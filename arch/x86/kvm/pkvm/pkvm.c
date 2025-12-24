@@ -631,6 +631,7 @@ static bool is_guest_vcpu_accessible(struct kvm_vcpu *vcpu, enum pkvm_hc hc)
 	case __pkvm__write_tsc_offset:
 	case __pkvm__write_tsc_multiplier:
 	case __pkvm__load_mmu_pgd:
+	case __pkvm__setup_mce:
 		/*
 		 * The host is responsible for running vCPU, injecting
 		 * interrupts, emulating lapic etc. Always allow the related PV
@@ -1250,6 +1251,9 @@ static int pkvm_vcpu_handle_host_hypercall(struct kvm_vcpu *hvcpu, enum pkvm_hc 
 		break;
 	case __pkvm__load_mmu_pgd:
 		ret = pkvm_load_mmu_pgd(vcpu, pkvm_hc_input1(hvcpu), pkvm_hc_input2(hvcpu));
+		break;
+	case __pkvm__setup_mce:
+		ret = kvm_vcpu_x86_setup_mce(vcpu, pkvm_hc_input1(hvcpu));
 		break;
 	default:
 		ret = -EINVAL;

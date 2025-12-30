@@ -252,6 +252,8 @@ struct kvm_x86_ops pkvm_host_vt_x86_ops __initdata = {
 	.disable_virtualization_cpu = pkvm_disable_virtualization_cpu,
 	.emergency_disable_virtualization_cpu = pkvm_disable_virtualization_cpu,
 
+	.has_emulated_msr = pkvm_host_has_emulated_msr,
+
 	.vm_size = sizeof(struct kvm_vmx),
 	.vm_init = pkvm_vm_init,
 	.vm_destroy = pkvm_vm_destroy,

@@ -104,3 +104,34 @@ failed:
 	jmp failed			/* should never come here */
 SYM_FUNC_END(pkvm_host_vmexit_entry)
 STACK_FRAME_NON_STANDARD(pkvm_host_vmexit_entry);
+
+/*
+ * Restore the host GPRs and return to the host in VMX root mode.
+ *
+ * Parameters follow the x86-64 System V ABI:
+ *   RDI: vcpu_regs, RSI: SS, RDX: RSP, RCX: RFLAGS, R8: CS, R9: RIP
+ */
+SYM_FUNC_START(pkvm_vmx_reprivilege_return)
+	ANNOTATE_NOENDBR
+
+	/* Build the stack frame expected by iretq. */
+	push %_ASM_SI
+	push %_ASM_DX
+	push %_ASM_CX
+	push %r8
+	push %r9
+
+	/* RAX is the return value and RSP is restored by iretq. */
+	LOAD_REGS %_ASM_DI, 0, \
+		  %_ASM_CX, %_ASM_DX, %_ASM_BX, %_ASM_BP, %_ASM_SI
+	LOAD_REGS %_ASM_DI, 0, \
+		  %r8, %r9, %r10, %r11, %r12, %r13, %r14, %r15
+
+	/* Load RDI last because it holds the vCPU register pointer. */
+	LOAD_REGS %_ASM_DI, 0, %_ASM_DI
+
+	/* Indicate that reprivileging the host succeeded. */
+	xor %eax, %eax
+	iretq
+SYM_FUNC_END(pkvm_vmx_reprivilege_return)
+STACK_FRAME_NON_STANDARD(pkvm_vmx_reprivilege_return);

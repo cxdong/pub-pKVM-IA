@@ -12,4 +12,12 @@ static inline void request_host_immediate_exit(struct vcpu_vmx *vmx)
 
 void pkvm_host_vmexit_main(struct vcpu_vmx *vmx);
 
+void pkvm_vmx_reprivilege_cpu(unsigned long *vcpu_regs);
+void __noreturn pkvm_vmx_reprivilege_return(unsigned long *vcpu_regs,
+					     unsigned long ss,
+					     unsigned long rsp,
+					     unsigned long rflags,
+					     unsigned long cs,
+					     unsigned long rip);
+
 #endif /* __PKVM_VMX_HOST_VMX_H */

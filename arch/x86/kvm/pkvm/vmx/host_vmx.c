@@ -184,9 +184,9 @@ static int handle_write_msr(struct kvm_vcpu *vcpu)
 	}
 	case MSR_IA32_APICBASE:
 	case APIC_BASE_MSR ... APIC_BASE_MSR + 0xff:
-		if (!pkvm_lapic_msr_write(msr, val))
-			break;
-		fallthrough;
+		if (pkvm_lapic_msr_write(msr, val))
+			ret = X86EMUL_UNHANDLEABLE;
+		break;
 	default:
 		/*
 		 * The MSRs intercepted by the writing bitmap should be

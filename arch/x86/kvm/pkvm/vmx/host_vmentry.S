@@ -114,3 +114,4 @@ SYM_FUNC_START(pkvm_host_vmexit_entry)
 failed:
 	jmp failed			/* should never come here */
 SYM_FUNC_END(pkvm_host_vmexit_entry)
+STACK_FRAME_NON_STANDARD(pkvm_host_vmexit_entry);

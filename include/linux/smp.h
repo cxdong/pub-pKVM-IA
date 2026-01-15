@@ -265,7 +265,7 @@ static inline int get_boot_cpu_id(void)
 #define __smp_processor_id() raw_smp_processor_id()
 #endif
 
-#if defined(CONFIG_DEBUG_PREEMPT) && !defined(__PKVM_HYP__)
+#ifdef CONFIG_DEBUG_PREEMPT
   extern unsigned int debug_smp_processor_id(void);
 # define smp_processor_id() debug_smp_processor_id()
 #else

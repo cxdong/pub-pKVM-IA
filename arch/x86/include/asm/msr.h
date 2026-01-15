@@ -43,7 +43,12 @@ struct saved_msrs {
 #include <asm/atomic.h>
 #include <linux/tracepoint-defs.h>
 
-#if defined(CONFIG_TRACEPOINTS) && !defined(__PKVM_HYP__)
+#if defined(__PKVM_HYP__) && defined(CONFIG_TRACEPOINTS)
+#undef tracepoint_enabled
+#define tracepoint_enabled(tracepoint) false
+#endif
+
+#ifdef CONFIG_TRACEPOINTS
 DECLARE_TRACEPOINT(read_msr);
 DECLARE_TRACEPOINT(write_msr);
 DECLARE_TRACEPOINT(rdpmc);

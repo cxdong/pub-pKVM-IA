@@ -3,6 +3,7 @@
 #define _ASM_X86_KVM_PKVM_H
 
 #ifdef CONFIG_PKVM_X86
+#include <linux/bug.h>
 #include <linux/kvm_host.h>
 #include <linux/memblock.h>
 #include <linux/mm.h>
@@ -372,6 +373,34 @@ static inline size_t pkvm_guest_initial_fpstate_size(struct kvm *kvm)
 
 	return PAGE_ALIGN(size);
 }
+
+#ifdef __PKVM_HYP__
+
+#ifndef CONFIG_PKVM_X86_DEBUG
+#undef WARN_ON
+#undef WARN
+#undef WARN_ON_ONCE
+#undef WARN_ONCE
+#undef _BUG_FLAGS
+
+#define WARN_ON(condition) ({						\
+	int __ret_warn_on = !!(condition);				\
+	unlikely(__ret_warn_on);					\
+})
+
+#define WARN(condition, format...) ({					\
+	int __ret_warn_on = !!(condition);				\
+	no_printk(format);						\
+	unlikely(__ret_warn_on);					\
+})
+
+#define WARN_ON_ONCE(condition) WARN_ON(condition)
+#define WARN_ONCE(condition, format...) WARN(condition, format)
+
+#define _BUG_FLAGS(ins, flags, extra)  asm volatile(ins)
+#endif /* CONFIG_PKVM_X86_DEBUG */
+
+#endif /* __PKVM_HYP__ */
 
 #else /* !CONFIG_PKVM_X86 */
 

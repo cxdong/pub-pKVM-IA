@@ -7,9 +7,13 @@
 #include <asm/vmx.h>
 
 /*
- * TODO: the implementation of vmexit tracing is VMX-specific.
- * Make it generic.
+ * TODO: If there is new vmx vmexit reason in the future which is larger than
+ * the EXIT_REASON_MSR_WRITE_IMM, the MAX_VMX_EXIT_REASONS should also be
+ * enlarged.
+ *
+ * TODO: The implementation of vmexit tracing is VMX-specific. Make it generic.
  */
+#define MAX_VMX_EXIT_REASONS	(EXIT_REASON_MSR_WRITE_IMM + 1)
 #define MAX_EXIT_REASONS	MAX_VMX_EXIT_REASONS
 
 struct vmexit_stats {

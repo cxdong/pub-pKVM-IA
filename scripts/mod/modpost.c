@@ -794,8 +794,7 @@ static void check_section(const char *modname, struct elf_info *elf,
 		".ltext", ".ltext.*"
 #define OTHER_TEXT_SECTIONS ".ref.text", ".head.text", ".spinlock.text", \
 		".fixup", ".entry.text", ".exception.text", \
-		".coldtext", ".softirqentry.text", ".irqentry.text", \
-		".pkvm.text", ".pkvm.noinstr.text", ".pkvm.init.text"
+		".coldtext", ".softirqentry.text", ".irqentry.text"
 
 #define ALL_TEXT_SECTIONS  ".init.text", ".exit.text", \
 		TEXT_SECTIONS, OTHER_TEXT_SECTIONS
@@ -822,9 +821,9 @@ enum mismatch {
  * @mismatch: Type of mismatch.
  */
 struct sectioncheck {
-	const char *fromsec[32];
-	const char *bad_tosec[32];
-	const char *good_tosec[32];
+	const char *fromsec[20];
+	const char *bad_tosec[20];
+	const char *good_tosec[20];
 	enum mismatch mismatch;
 };
 

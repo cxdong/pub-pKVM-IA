@@ -6,7 +6,6 @@
 #include <asm/percpu.h>
 #include <asm/processor.h>
 #include <asm/sections.h>
-#include "cpu.h"
 #include "memory.h"
 #include "pkvm.h"
 
@@ -86,8 +85,6 @@ unsigned long pkvm_per_cpu_offset(int cpu)
 
 	return __per_cpu_offset[cpu];
 }
-
-void warn_thunk_thunk(void) {}
 
 void set_x86_spec_ctrl(u64 spec_ctrl)
 {

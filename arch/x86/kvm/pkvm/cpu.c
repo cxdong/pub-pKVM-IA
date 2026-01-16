@@ -12,9 +12,6 @@
 unsigned long __per_cpu_offset[NR_CPUS];
 DEFINE_PER_CPU_CACHE_HOT(unsigned long, this_cpu_off);
 DEFINE_PER_CPU_CACHE_HOT(int, cpu_number);
-#ifdef CONFIG_X86_64
-DEFINE_PER_CPU_CACHE_HOT(u64, __x86_call_depth);
-#endif
 struct cpuinfo_x86 boot_cpu_data;
 struct cpumask __cpu_possible_mask __ro_after_init;
 unsigned int nr_cpu_ids;

@@ -5,6 +5,10 @@
 #include <linux/sort.h>
 #include <asm/kvm_pkvm.h>
 
+#ifdef CONFIG_X86_64
+DEFINE_PER_CPU(u64, pkvm_sym(__x86_call_depth));
+#endif
+
 bool __read_mostly enable_pkvm;
 
 static struct memblock_region *pkvm_memory = pkvm_sym(pkvm_memory);

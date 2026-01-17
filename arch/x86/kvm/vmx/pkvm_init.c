@@ -34,6 +34,7 @@ static u64 __init vmx_pkvm_total_reserve_pages(void)
 	u64 total = pkvm_vmx_data_pages();
 
 	total += pkvm_hyp_pgtable_pages();
+	total += pkvm_host_pgtable_pages();
 	total += pkvm_vmemmap_pages(PKVM_VMEMMAP_ENTRY_SIZE);
 
 	return total;

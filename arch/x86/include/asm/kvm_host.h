@@ -2171,6 +2171,7 @@ void __init pkvm_reserve(void);
 void pkvm_init_debugfs(void);
 void pkvm_create_vm_debugfs(struct kvm *kvm);
 int pkvm_vm_ioctl_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap);
+void __init pkvm_ramoops_init(void);
 int kvm_topup_pkvm_memcache(struct pkvm_memcache *mc, unsigned long min_pages);
 void kvm_free_pkvm_memcache(struct pkvm_memcache *mc);
 
@@ -2188,6 +2189,7 @@ static inline void __init pkvm_reserve(void) {}
 static inline void pkvm_create_vm_debugfs(struct kvm *kvm) {}
 static inline int pkvm_vm_ioctl_enable_cap(struct kvm *kvm, struct kvm_enable_cap *cap)
 { return -EINVAL; }
+static inline void __init pkvm_ramoops_init(void) {}
 #endif
 
 #ifdef __PKVM_HYP__

@@ -1406,7 +1406,7 @@ undonate:
 }
 
 static int pkvm_vcpu_add_fpstate(struct kvm_vcpu *vcpu,
-				 phys_addr_t fpstate_pa, size_t size,
+				 phys_addr_t fpstate_pa, unsigned int size,
 				 struct pkvm_memcache *mc)
 {
 	struct fpstate *new, *old;
@@ -1444,6 +1444,7 @@ static int pkvm_vcpu_add_fpstate(struct kvm_vcpu *vcpu,
 		return 0;
 	}
 
+	BUILD_BUG_ON(!__same_type(size, new->size));
 	new->size = size;
 	vcpu->arch.guest_fpu.fpstate = new;
 

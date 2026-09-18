@@ -7,6 +7,7 @@
 #include <asm/cpuid/api.h>
 #include <asm/pkvm_image.h>
 #include <asm/virt.h>
+#include "pkvm_constants.h"
 #include "vmx.h"
 
 extern u64 x86_pred_cmd;
@@ -33,6 +34,7 @@ static u64 __init vmx_pkvm_total_reserve_pages(void)
 	u64 total = pkvm_vmx_data_pages();
 
 	total += pkvm_hyp_pgtable_pages();
+	total += pkvm_vmemmap_pages(PKVM_VMEMMAP_ENTRY_SIZE);
 
 	return total;
 }

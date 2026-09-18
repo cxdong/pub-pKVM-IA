@@ -1,17 +1,84 @@
 // SPDX-License-Identifier: GPL-2.0
+#define pr_fmt(fmt) "pkvm: " fmt
+
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <asm/kvm_pkvm.h>
 #include "vmx.h"
+
+static DEFINE_PER_CPU(struct pkvm_pcpu *, pkvm_pcpu);
 
 static u64 __init vmx_pkvm_total_reserve_pages(void)
 {
 	return pkvm_data_pages();
 }
 
+static __init int pkvm_setup_pcpu(int cpu)
+{
+	struct pkvm_pcpu *pcpu;
+
+	if (cpu >= CONFIG_NR_CPUS) {
+		pr_err("setup_pcpu: invalid CPU number %d\n", cpu);
+		return -EINVAL;
+	}
+
+	pcpu = pkvm_early_alloc_contig(PKVM_PCPU_PAGES);
+	if (!pcpu) {
+		pr_err("no pcpu memory for CPU%d\n", cpu);
+		return -ENOMEM;
+	}
+
+	pcpu->cpu = cpu;
+	per_cpu(pkvm_pcpu, cpu) = pcpu;
+
+	return 0;
+}
+
 int __init vmx_pkvm_init(void)
 {
+	unsigned long nr_pages;
+	struct pkvm_hyp *pkvm;
+	int ret, cpu;
+
+	if (!enable_pkvm)
+		return 0;
+
+	if (!pkvm_mem_base) {
+		pr_err("required memory not reserved\n");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	nr_pages = pkvm_data_pages();
+	pkvm_early_alloc_init(__va(pkvm_mem_base), nr_pages << PAGE_SHIFT);
+
+	pkvm = pkvm_early_alloc_contig(PKVM_HYP_PAGES);
+	if (!pkvm) {
+		pr_err("cannot alloc pkvm_hyp\n");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	pkvm->num_cpus = 0;
+
+	for_each_possible_cpu(cpu) {
+		ret = pkvm_setup_pcpu(cpu);
+		if (ret)
+			goto out;
+
+		pkvm->pcpus[pkvm->num_cpus] = per_cpu(pkvm_pcpu, cpu);
+		pkvm->num_cpus++;
+	}
+
 	return 0;
+out:
+	/*
+	 * As the reserved memory at the pkvm_mem_base will not be
+	 * released back to the host, no need to de-initialize or
+	 * free for the early_alloc.
+	 */
+	enable_pkvm = false;
+	return ret;
 }
 
 int __init pkvm_vmx_init_reserve_ops(struct pkvm_reserve_ops *ops)

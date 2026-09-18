@@ -6,6 +6,7 @@
 #include <linux/bug.h>
 #include <linux/kvm_host.h>
 #include <linux/mm.h>
+#include <asm/desc.h>
 #include <asm/pkvm_image.h>
 #include <asm/pkvm_redef.h>
 
@@ -27,9 +28,16 @@ static inline int __init pkvm_vmx_init_reserve_ops(struct pkvm_reserve_ops *ops)
 /* Size of reserved space for private parameter in pKVM stack */
 #define PKVM_STACK_TOP_RESV		16
 
+struct idt_page {
+	gate_desc idt[IDT_ENTRIES];
+} __aligned(PAGE_SIZE);
+
 struct pkvm_pcpu {
 	u8 stack[PKVM_STACK_SIZE] __aligned(16);
 	int cpu;
+	struct gdt_page gdt_page;
+	struct idt_page idt_page;
+	struct tss_struct tss;
 };
 
 struct pkvm_hyp {
@@ -52,6 +60,9 @@ PKVM_DECLARE(int, pkvm_setup_per_cpu, (int cpu, unsigned long base,
 				       unsigned long pcpu_pa, unsigned long vcpu_pa));
 PKVM_DECLARE(unsigned int, pkvm_per_cpu_nr_pages, (void));
 PKVM_DECLARE(unsigned long, pkvm_per_cpu_offset, (int cpu));
+#define GEN(x, ...) PKVM_DECLARE(void, handle_exception_##x, (void));
+#include <asm/GEN-for-each-exc.h>
+#undef GEN
 
 static inline unsigned long pkvm_data_pages(unsigned long extra_global,
 					    unsigned long extra_percpu)

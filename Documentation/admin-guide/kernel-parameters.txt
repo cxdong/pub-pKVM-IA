@@ -3306,6 +3306,13 @@ Kernel parameters
 			Identification feature (tagged TLBs). Default is 1
 			(enabled). Disable by KVM if hardware lacks support
 			for it.
+	kvm-x86.pkvm=	[KVM,X86,EARLY] If CONFIG_PKVM_X86 is set, control
+			whether to enable pKVM hypervisor, i.e. if
+			CONFIG_PKVM_INTEL is set, deprivilege the host as a VM
+			running in non-root VMX mode under the control of pKVM
+			hypervisor that is running in root VMX mode on Intel
+			platforms, and allows running guests whose state is
+			protected from the host. Default is 0 (disabled).
 
 	l1d_flush=	[X86,INTEL,EARLY]
 			Control mitigation for L1D based snooping vulnerability.

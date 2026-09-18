@@ -70,9 +70,8 @@ static void x86_virt_invoke_kvm_emergency_callback(void)
 #if IS_ENABLED(CONFIG_KVM_INTEL)
 static DEFINE_PER_CPU(struct vmcs *, root_vmcs);
 
-static int x86_virt_cpu_vmxon(void)
+static int x86_virt_cpu_vmxon(u64 vmxon_pointer)
 {
-	u64 vmxon_pointer = __pa(per_cpu(root_vmcs, raw_smp_processor_id()));
 	u64 msr;
 
 	cr4_set_bits(X86_CR4_VMXE);
@@ -91,7 +90,7 @@ fault:
 	return -EFAULT;
 }
 
-static int x86_vmx_enable_virtualization_cpu(void)
+static int __x86_vmx_enable_virtualization_cpu(u64 vmxon_pointer)
 {
 	int r;
 
@@ -100,13 +99,20 @@ static int x86_vmx_enable_virtualization_cpu(void)
 
 	intel_pt_handle_vmx(1);
 
-	r = x86_virt_cpu_vmxon();
+	r = x86_virt_cpu_vmxon(vmxon_pointer);
 	if (r) {
 		intel_pt_handle_vmx(0);
 		return r;
 	}
 
 	return 0;
+}
+
+static int x86_vmx_enable_virtualization_cpu(void)
+{
+	u64 vmxon_pointer = __pa(per_cpu(root_vmcs, raw_smp_processor_id()));
+
+	return __x86_vmx_enable_virtualization_cpu(vmxon_pointer);
 }
 
 /*
@@ -316,6 +322,38 @@ int x86_virt_get_ref(int feat)
 }
 EXPORT_SYMBOL_FOR_KVM(x86_virt_get_ref);
 
+#if IS_ENABLED(CONFIG_KVM_INTEL)
+int x86_vmx_get_ref(u64 vmxon_pointer)
+{
+	int r;
+
+	if (virt_ops.feature != X86_FEATURE_VMX)
+		return -EOPNOTSUPP;
+
+	if (!IS_ALIGNED(vmxon_pointer, PAGE_SIZE))
+		return -EINVAL;
+
+	guard(preempt)();
+
+	/*
+	 * The caller-provided VMXON region can only be installed when taking
+	 * the first reference.  Later users share the VMX operation that was
+	 * established with this region through x86_virt_get_ref().
+	 */
+	if (this_cpu_read(virtualization_nr_users))
+		return -EBUSY;
+
+	this_cpu_inc(virtualization_nr_users);
+
+	r = __x86_vmx_enable_virtualization_cpu(vmxon_pointer);
+	if (r)
+		WARN_ON_ONCE(this_cpu_dec_return(virtualization_nr_users));
+
+	return r;
+}
+EXPORT_SYMBOL_FOR_KVM(x86_vmx_get_ref);
+#endif
+
 void x86_virt_put_ref(int feat)
 {
 	guard(preempt)();
@@ -327,6 +365,14 @@ void x86_virt_put_ref(int feat)
 	BUG_ON(virt_ops.disable_virtualization_cpu() && !virt_rebooting);
 }
 EXPORT_SYMBOL_FOR_KVM(x86_virt_put_ref);
+
+#if IS_ENABLED(CONFIG_KVM_INTEL)
+void x86_vmx_put_ref(void)
+{
+	x86_virt_put_ref(X86_FEATURE_VMX);
+}
+EXPORT_SYMBOL_FOR_KVM(x86_vmx_put_ref);
+#endif
 
 /*
  * Disable virtualization, i.e. VMX or SVM, to ensure INIT is recognized during

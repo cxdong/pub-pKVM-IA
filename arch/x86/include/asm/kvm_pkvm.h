@@ -8,10 +8,14 @@ struct pkvm_reserve_ops {
 	u64 (*total_pages)(void);
 };
 
+#ifdef CONFIG_PKVM_INTEL
+int __init pkvm_vmx_init_reserve_ops(struct pkvm_reserve_ops *ops);
+#else
 static inline int __init pkvm_vmx_init_reserve_ops(struct pkvm_reserve_ops *ops)
 {
 	return -EOPNOTSUPP;
 }
+#endif
 
 #define PKVM_MEMBLOCK_REGIONS		128
 

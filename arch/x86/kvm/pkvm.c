@@ -13,7 +13,7 @@ static int __init early_pkvm_parse_cmdline(char *buf)
 }
 early_param("kvm-x86.pkvm", early_pkvm_parse_cmdline);
 
-static struct memblock_region pkvm_memory[PKVM_MEMBLOCK_REGIONS];
+static struct memblock_region *pkvm_memory = pkvm_sym(pkvm_memory);
 static unsigned int pkvm_memblock_nr;
 
 phys_addr_t pkvm_mem_base;
@@ -48,6 +48,7 @@ static int __init register_memblock_regions(void)
 		pkvm_memblock_nr++;
 	}
 	sort_memblock_regions();
+	pkvm_sym(pkvm_memblock_nr) = pkvm_memblock_nr;
 
 	return 0;
 }
